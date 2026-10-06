@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+
+    <!-- 1. 精密同心圆外环 (整体等比缩小至 60%，轻巧精致，留白更宽裕) -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4.2"
+        android:fillColor="#00000000"
+        android:pathData="M44.5,31 A13.5,13.5 0 1,1 44.49,31 Z" />
+
+    <!-- 2. 中心实心焦点 (半径 4.5) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M44.5,40 A4.5,4.5 0 1,1 44.49,40 Z" />
+
+    <!-- 3. 右下角 Plus 加号 (竖线：(63, 57) 到 (63, 69)，圆角端点) -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4.2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M63,57 L63,69" />
+
+    <!-- 4. 右下角 Plus 加号 (横线：(57, 63) 到 (69, 63)，圆角端点) -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4.2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M57,63 L69,63" />
+
+</vector>

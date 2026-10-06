@@ -1,0 +1,11 @@
+[versions]
+agp = "9.3.3"
+appcompat = "1.8.0"
+
+[libraries]
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+libxposed-api = { group = "io.github.libxposed", name = "api", version = "102.0.0" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+
