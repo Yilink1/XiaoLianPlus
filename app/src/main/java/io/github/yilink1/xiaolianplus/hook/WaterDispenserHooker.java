@@ -217,6 +217,9 @@ public class WaterDispenserHooker {
 
     private void unlockDialogTouch(android.app.Dialog dialog, String tag) {
         try {
+            if (dialog != null && dialog.getClass().getName().startsWith("io.github.yilink1.xiaolianplus")) {
+                return;
+            }
             if (!io.github.yilink1.xiaolianplus.config.ModuleConfig.isLoadingPassThroughEnabled(dialog.getContext())) {
                 return;
             }

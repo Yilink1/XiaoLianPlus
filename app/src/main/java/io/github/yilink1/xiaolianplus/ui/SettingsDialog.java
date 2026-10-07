@@ -7,6 +7,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -17,6 +18,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
+import android.window.OnBackInvokedDispatcher;
 import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -303,6 +305,28 @@ public class SettingsDialog {
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
             window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            enforceWindowState(dialog, window);
+        }
+    }
+
+    private static void enforceWindowState(Dialog d, Window w) {
+        // 无论之前被谁改过，都恢复：可聚焦、模态、有遮罩
+        w.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
+        w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        w.setDimAmount(0.45f);
+
+        View decor = w.getDecorView();
+        decor.setFocusableInTouchMode(true);
+        decor.requestFocus();
+
+        // Android 13+ 预测性返回：显式注册，保证手势/按键都能到弹窗
+        if (Build.VERSION.SDK_INT >= 33) {
+            try {
+                d.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                        OnBackInvokedDispatcher.PRIORITY_OVERLAY, d::dismiss);
+            } catch (Throwable ignored) {
+            }
         }
     }
 
