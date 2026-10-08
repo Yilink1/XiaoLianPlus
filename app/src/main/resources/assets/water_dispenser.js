@@ -23,25 +23,35 @@
   console.log('[XiaoLianPlus] Water dispenser v2.6.0 loaded.');
 
   // ───────── 1. 网关级通信拦截守卫 (100% 物理绝缘穿透) ─────────
-  if (!window.__xl_bridge_hooked && window.AlipayJSBridge && window.AlipayJSBridge.call) {
-    const origBridgeCall = window.AlipayJSBridge.call;
-    window.AlipayJSBridge.call = function (func, param, cb) {
-      if (func === 'postMessage' && param && param.data) {
-        try {
-          const str = typeof param.data === 'string' ? param.data : JSON.stringify(param.data);
-          if (str.includes('"selectDevice"')) {
-            const timeDiff = Date.now() - (window.__xl_last_star_tap_time || 0);
-            if (timeDiff < 800) {
-              console.log('[XiaoLianPlus] 🛡️ 网关拦截成功，彻底丢弃穿透请求！距离点星:', timeDiff, 'ms');
-              return;
+  function hookBridge() {
+    if (window.__xl_bridge_hooked) return;
+    if (window.AlipayJSBridge && window.AlipayJSBridge.call) {
+      const origBridgeCall = window.AlipayJSBridge.call;
+      window.AlipayJSBridge.call = function (func, param, cb) {
+        if (func === 'postMessage' && param && param.data) {
+          try {
+            const str = typeof param.data === 'string' ? param.data : JSON.stringify(param.data);
+            if (str.includes('"selectDevice"')) {
+              const timeDiff = Date.now() - (window.__xl_last_star_tap_time || 0);
+              if (timeDiff < 800) {
+                console.log('[XiaoLianPlus] 🛡️ 网关拦截成功，彻底丢弃穿透请求！距离点星:', timeDiff, 'ms');
+                return;
+              }
             }
-          }
-        } catch (e) {}
-      }
-      return origBridgeCall.apply(this, arguments);
-    };
-    window.__xl_bridge_hooked = true;
+          } catch (e) {}
+        }
+        return origBridgeCall.apply(this, arguments);
+      };
+      window.__xl_bridge_hooked = true;
+      console.log('[XiaoLianPlus] 🛡️ AlipayJSBridge 网关守卫已就绪');
+    }
   }
+  hookBridge();
+  document.addEventListener('AlipayJSBridgeReady', hookBridge);
+  const bridgeTimer = setInterval(() => {
+    hookBridge();
+    if (window.__xl_bridge_hooked) clearInterval(bridgeTimer);
+  }, 100);
 
   // ───────── 2. 存储与基础工具 ─────────
   const FAV_KEY = 'xl_fav_list';
@@ -104,14 +114,14 @@
         gap: 2px !important;
       }
 
-      /* 星标系统：z-index: 1 绝不盖过扫码球；order: 9999 永远锁死在最右 */
+      /* 星标系统：经典饱满尺寸，z-index: 1 绝不盖过扫码球；order: 9999 永远锁死在最右 */
       .xl-card-star {
-        width: 40px;
-        height: 40px;
+        width: 44px;
+        height: 44px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: 24px !important;
+        font-size: 26px !important;
         line-height: 1;
         cursor: pointer;
         user-select: none;
@@ -253,14 +263,17 @@
     if (!sr) return;
 
     let star = sr.querySelector('.xl-card-star');
-    if (!star) {
+    if (!star || !star.dataset.xlBound) {
+      if (star) star.remove();
       star = document.createElement('div');
       star.className = 'xl-card-star';
+      star.dataset.xlBound = '1';
 
       let sx = 0, sy = 0, st = 0, moved = false;
 
       star.addEventListener('touchstart', (e) => {
         e.stopPropagation();
+        e.stopImmediatePropagation();
         const t = e.touches[0];
         if (!t) return;
         sx = t.clientX; sy = t.clientY; st = Date.now(); moved = false;
@@ -276,16 +289,19 @@
 
       star.addEventListener('touchend', (e) => {
         e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (e.cancelable) e.preventDefault();
         if (!moved && Date.now() - st < 500) {
           window.__xl_last_star_tap_time = Date.now();
           window.__xl_global_last_touch_time = Date.now();
           onStarTrigger(e, star);
         }
-      }, { capture: true, passive: true });
+      }, { capture: true, passive: false });
 
       star.addEventListener('click', (e) => {
         e.stopPropagation();
-        // 全局防幽灵点击：800ms 内发生过任何手指触摸，坚决忽略合成 click！
+        e.stopImmediatePropagation();
+        if (e.cancelable) e.preventDefault();
         if (Date.now() - (window.__xl_global_last_touch_time || 0) < 800) {
           return;
         }
@@ -392,6 +408,10 @@
     } else {
       favs.forEach((rawName) => {
         const card = templateCard.cloneNode(true);
+        // 清除旧克隆节点残留，确保全新绑定
+        card.querySelectorAll('.xl-card-star, .xl-alias').forEach(n => n.remove());
+        delete card.dataset.xlBound;
+
         card.setAttribute('data-raw', rawName);
         card.setAttribute('data-xl', '1');
         card.style.display = 'flex';
@@ -403,9 +423,15 @@
         }
         applyAlias(card, rawName, aliases[rawName]);
 
-        // 卡片点击直达打水 (受全局点击锁保护)
+        // 卡片点击直达打水 (守卫防线：严格屏蔽点星命中与幽灵延迟)
         card.onclick = (e) => {
+          if (e.target && e.target.closest && e.target.closest('.xl-card-star')) {
+            e.stopPropagation();
+            return;
+          }
+          if (Date.now() - (window.__xl_last_star_tap_time || 0) < 800) return;
           if (Date.now() - (window.__xl_global_last_touch_time || 0) < 800) return;
+
           const rec = records[rawName];
           if (rec) {
             jumpToDrinkWater(rec);
@@ -417,7 +443,7 @@
         // 长按设置备注
         bindCardLongPress(card, rawName);
 
-        // 绑定星标
+        // 绑定星标 (带事件全新绑定)
         attachInlineStar(card);
 
         favView.appendChild(card);
