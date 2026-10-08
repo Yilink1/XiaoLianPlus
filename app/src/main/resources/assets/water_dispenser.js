@@ -579,7 +579,7 @@
           </label>
         </div>
         <div style="margin-bottom: 24px;">
-          <div style="font-size: 12px; color: #595959; margin-bottom: 8px; font-weight: 500;">字体高亮颜色</div>
+          <div style="font-size: 12px; color: #595959; margin-bottom: 10px; font-weight: 500;">文字高亮色</div>
           <div id="sheet-palette" style="display: flex; gap: 12px; align-items: center;"></div>
         </div>
         <button id="sheet-save-btn" style="
@@ -598,37 +598,58 @@
         position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
         background-color: white; transition: .25s; border-radius: 50%;
       }
-      .color-dot {
-        width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
-        display: flex; align-items: center; justify-content: center;
-        border: 2px solid transparent; transition: transform 0.15s ease;
-      }
-      .color-dot.active { border-color: #1677ff; transform: scale(1.15); }
-      .color-dot-inner { width: 18px; height: 18px; border-radius: 50%; }
     `;
     document.head.appendChild(styleEl);
 
     const colors = [
-      { key: 'default', color: '#8c8c8c' },
-      { key: '#ff4d4f', color: '#ff4d4f' },
-      { key: '#1677ff', color: '#1677ff' },
-      { key: '#52c41a', color: '#52c41a' },
-      { key: '#722ed1', color: '#722ed1' },
-      { key: '#fa8c16', color: '#fa8c16' }
+      { name: '默认', val: 'default', bg: '#f2f3f5', border: '#d9d9d9' },
+      { name: '科技蓝', val: '#1677ff', bg: '#1677ff' },
+      { name: '极光绿', val: '#52c41a', bg: '#52c41a' },
+      { name: '火山橙', val: '#fa541c', bg: '#fa541c' },
+      { name: '极客紫', val: '#722ed1', bg: '#722ed1' }
     ];
 
-    const palette = sheetRoot.querySelector('#sheet-palette');
-    colors.forEach(c => {
-      const dot = document.createElement('div');
-      dot.className = 'color-dot' + (c.key === 'default' ? ' active' : '');
-      dot.dataset.color = c.key;
-      dot.innerHTML = `<div class="color-dot-inner" style="background:${c.color};"></div>`;
-      dot.onclick = () => {
-        sheetRoot.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
-        dot.classList.add('active');
-        selectedColor = c.key;
+    const paletteContainer = sheetRoot.querySelector('#sheet-palette');
+
+    function updatePaletteUI() {
+      paletteContainer.querySelectorAll('.color-dot').forEach(dot => {
+        const val = dot.dataset.val;
+        const isSelected = val === selectedColor;
+
+        if (isSelected) {
+          dot.style.outline = '3px solid #1f1f1f';
+          dot.style.outlineOffset = '2px';
+        } else {
+          dot.style.outline = 'none';
+        }
+
+        if (val === 'default') {
+          dot.innerHTML = `<span style="font-size: 11px; font-weight: ${isSelected ? '700' : 'normal'}; color: ${isSelected ? '#1f1f1f' : '#8c8c8c'};">默认</span>`;
+        } else {
+          dot.innerHTML = isSelected ? '<span style="color:#fff; font-size: 13px; font-weight:bold; line-height: 1;">✓</span>' : '';
+        }
+      });
+    }
+
+    paletteContainer.innerHTML = colors.map(c => `
+      <div class="color-dot" data-val="${c.val}" style="
+        width: 36px; height: 36px; border-radius: 50%; background: ${c.bg};
+        ${c.border ? `border: 1px solid ${c.border};` : ''}
+        cursor: pointer; display: flex; align-items: center; justify-content: center;
+        box-sizing: border-box; transition: transform 0.15s ease;
+        -webkit-tap-highlight-color: transparent;
+      "></div>
+    `).join('');
+
+    paletteContainer.querySelectorAll('.color-dot').forEach(dot => {
+      const handleSelect = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        selectedColor = dot.dataset.val;
+        updatePaletteUI();
       };
-      palette.appendChild(dot);
+      dot.addEventListener('click', handleSelect);
+      dot.addEventListener('touchend', handleSelect);
     });
 
     const backdrop = sheetRoot.querySelector('#sheet-backdrop');
@@ -647,9 +668,7 @@
       toggleRaw.checked = cur.showRaw !== false;
       selectedColor = cur.color || 'default';
 
-      sheetRoot.querySelectorAll('.color-dot').forEach(d => {
-        d.classList.toggle('active', d.dataset.color === selectedColor);
-      });
+      updatePaletteUI();
 
       backdrop.style.pointerEvents = 'auto';
       backdrop.style.opacity = '1';
