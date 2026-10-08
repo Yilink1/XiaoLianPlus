@@ -301,7 +301,7 @@ public class WaterDispenserHooker {
      * 在主线程按阶梯时间延迟扫描 Activity 的 View 树以发现 WebView 并执行注入
      */
     public void scheduleViewTreeScan(Activity activity) {
-        long[] delays = { 300, 800, 1800, 3200 };
+        long[] delays = { 50, 200, 600, 1500 };
         for (long delay : delays) {
             mMainHandler.postDelayed(() -> {
                 if (activity.isFinishing() || activity.isDestroyed()) return;
