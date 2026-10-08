@@ -301,7 +301,7 @@ public class WaterDispenserHooker {
      * 在主线程按阶梯时间延迟扫描 Activity 的 View 树以发现 WebView 并执行注入
      */
     public void scheduleViewTreeScan(Activity activity) {
-        long[] delays = { 100, 400, 1000, 2000, 3500 };
+        long[] delays = { 300, 800, 1800, 3200 };
         for (long delay : delays) {
             mMainHandler.postDelayed(() -> {
                 if (activity.isFinishing() || activity.isDestroyed()) return;
@@ -421,30 +421,11 @@ public class WaterDispenserHooker {
     }
 
     /**
-     * 4. Hook 阿里 Nebula APWebView
+     * 4. 阿里 Nebula APWebView 为抽象接口，禁止直接 Hook 避免抛出 Cannot hook abstract methods。
+     * 注入已由 scheduleViewTreeScan 阶梯扫描与通用 WebView 容器完整兜底。
      */
     private void hookNebulaWebView(ClassLoader classLoader) {
-        try {
-            Class<?> apWebViewClass = classLoader.loadClass("com.alipay.mobile.nebula.webview.APWebView");
-            Method loadUrl = findMethod(apWebViewClass, "loadUrl", 1);
-            if (loadUrl != null) {
-                mModule.hook(loadUrl)
-                    .setId("hook_ap_webview_load_url")
-                    .setPriority(XposedInterface.PRIORITY_DEFAULT)
-                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                    .intercept(chain -> {
-                        Object res = chain.proceed();
-                        Object webView = chain.getThisObject();
-                        mMainHandler.postDelayed(() -> inject(webView), 600);
-                        return res;
-                    });
-                mHookNebulaDone = true;
-                mModule.log(Log.INFO, TAG, "Hooked APWebView.loadUrl");
-            }
-        } catch (ClassNotFoundException ignored) {
-        } catch (Throwable t) {
-            mModule.log(Log.WARN, TAG, "Failed to hook APWebView", t);
-        }
+        mHookNebulaDone = true;
     }
 
     /**
@@ -474,12 +455,17 @@ public class WaterDispenserHooker {
                     }
                 }
 
+                boolean autoConfirm = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterAutoConfirmEnabled(targetCtx);
+                boolean holdToSettle = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterHoldToSettleEnabled(targetCtx);
+                boolean desensitize = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterDesensitizeEnabled(targetCtx);
+                String scriptToRun = "window.__XL_CONFIG__ = { autoConfirm: " + autoConfirm + ", holdToSettle: " + holdToSettle + ", desensitize: " + desensitize + " };\n" + mScriptContent;
+
                 boolean evaluated = false;
 
                 // 方案 A: 反射调用 evaluateJavascript(String, ValueCallback)
                 try {
                     Method evalMethod = webView.getClass().getMethod("evaluateJavascript", String.class, android.webkit.ValueCallback.class);
-                    evalMethod.invoke(webView, mScriptContent, null);
+                    evalMethod.invoke(webView, scriptToRun, null);
                     logInjectedOnce(webView, "evaluateJavascript");
                     evaluated = true;
                 } catch (Throwable ignored) {
@@ -489,7 +475,7 @@ public class WaterDispenserHooker {
                 if (!evaluated) {
                     try {
                         Method loadUrlMethod = webView.getClass().getMethod("loadUrl", String.class);
-                        loadUrlMethod.invoke(webView, "javascript:" + mScriptContent);
+                        loadUrlMethod.invoke(webView, "javascript:" + scriptToRun);
                         logInjectedOnce(webView, "loadUrl");
                     } catch (Throwable ignored) {
                     }

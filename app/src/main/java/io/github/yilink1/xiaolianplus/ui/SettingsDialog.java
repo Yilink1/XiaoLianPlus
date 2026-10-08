@@ -72,7 +72,14 @@ public class SettingsDialog {
         int dp12 = dp2px(context, 12);
         int dp8 = dp2px(context, 8);
 
-        ScrollView scrollView = new ScrollView(context);
+        ScrollView scrollView = new ScrollView(context) {
+            @Override
+            protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                int maxH = (int) (getResources().getDisplayMetrics().heightPixels * 0.80);
+                heightMeasureSpec = MeasureSpec.makeMeasureSpec(maxH, MeasureSpec.AT_MOST);
+                super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            }
+        };
         scrollView.setFillViewport(true);
 
         LinearLayout root = new LinearLayout(context);
@@ -111,6 +118,18 @@ public class SettingsDialog {
         addSwitchItem(context, root, "饮水机备注与收藏", "长按名称改名，点击星标置顶（支持联网/公共饮水机）",
                 ModuleConfig.isWaterDispenserEnabled(context),
                 (buttonView, isChecked) -> ModuleConfig.setWaterDispenserEnabled(context, isChecked));
+
+        addSwitchItem(context, root, "跳过打水确认弹窗", "进入打水页面时自动确认“开始使用”，免去手动二次点击",
+                ModuleConfig.isWaterAutoConfirmEnabled(context),
+                (buttonView, isChecked) -> ModuleConfig.setWaterAutoConfirmEnabled(context, isChecked));
+
+        addSwitchItem(context, root, "长按0.5秒结算找零", "长按底部胶囊进度条替代横向滑动结算，0.5秒快速找零",
+                ModuleConfig.isWaterHoldToSettleEnabled(context),
+                (buttonView, isChecked) -> ModuleConfig.setWaterHoldToSettleEnabled(context, isChecked));
+
+        addSwitchItem(context, root, "打水页面数据脱敏", "将打水界面中的楼栋位置伪装为虚拟设备（防开盒与隐私泄露）",
+                ModuleConfig.isWaterDesensitizeEnabled(context),
+                (buttonView, isChecked) -> ModuleConfig.setWaterDesensitizeEnabled(context, isChecked));
 
         addSwitchItem(context, root, "加载中允许直接扫码", "页面转圈加载时依然能直接点击右下角扫码（支持饮水机、浴室等全部页面）",
                 ModuleConfig.isLoadingPassThroughEnabled(context),
@@ -280,30 +299,16 @@ public class SettingsDialog {
             }
         });
 
-        // 全屏模态遮罩容器，阻断底层页面点击穿透，支持点击暗色空白区退出
-        FrameLayout fullContainer = new FrameLayout(context);
-        fullContainer.setBackgroundColor(Color.parseColor("#80000000")); // 50% 半透明黑色遮罩
-        fullContainer.setOnClickListener(v -> dialog.dismiss()); // 点击任意空白区域关闭弹窗！
-
-        FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(
-                (int) (context.getResources().getDisplayMetrics().widthPixels * 0.88),
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        cardLp.gravity = Gravity.CENTER;
-        scrollView.setLayoutParams(cardLp);
-        scrollView.setOnClickListener(v -> {}); // 阻断点击传递，点击卡片内容区不关闭
-        root.setOnClickListener(v -> {}); // 阻断点击传递
-
         scrollView.addView(root);
-        fullContainer.addView(scrollView);
-        dialog.setContentView(fullContainer);
+        dialog.setContentView(scrollView);
 
         sCurrentDialog = dialog;
         dialog.show();
 
         Window window = dialog.getWindow();
         if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            int width = (int) (context.getResources().getDisplayMetrics().widthPixels * 0.88);
+            window.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT);
             window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
             enforceWindowState(dialog, window);
         }
