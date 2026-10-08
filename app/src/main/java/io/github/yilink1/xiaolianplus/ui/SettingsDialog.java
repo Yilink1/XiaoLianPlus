@@ -86,11 +86,12 @@ public class SettingsDialog {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp20, dp24, dp20, dp24);
 
-        // 圆角白色背景
+        // 圆角白色背景直接赋予外层滚动容器，并开启原生视口轮廓裁切，确保滚动时上下圆角永不被截断
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(Color.WHITE);
         bg.setCornerRadius(dp2px(context, 18));
-        root.setBackground(bg);
+        scrollView.setBackground(bg);
+        scrollView.setClipToOutline(true);
 
         // 1. 标题与副标题（居中规整纯净布局）
         TextView tvTitle = new TextView(context);

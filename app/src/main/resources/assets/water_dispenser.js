@@ -178,14 +178,16 @@
         box-sizing: border-box;
       }
 
-      /* 全收藏模式：左上角楼栋名纯 CSS 替换（0 新增节点，无倒三角） */
+      /* 全收藏模式：左上角楼栋名纯 CSS 替换（0 新增节点，无倒三角，禁用点击防误触） */
       body.xl-in-fav-mode .header-title .building,
       body.xl-in-fav-mode .building {
         font-size: 0 !important;
+        pointer-events: none !important;
       }
+      /* 使用 visibility: hidden 替代 display: none，确保物理碰撞箱在线，退出全收藏时点击瞬间响应绝不吞击 */
       body.xl-in-fav-mode .header-title .building > *,
       body.xl-in-fav-mode .building > * {
-        display: none !important;
+        visibility: hidden !important;
       }
       body.xl-in-fav-mode .header-title .building::before,
       body.xl-in-fav-mode .building::before {
@@ -195,6 +197,7 @@
         color: #ffffff !important;
         letter-spacing: 0.5px !important;
         display: inline-block !important;
+        visibility: visible !important;
       }
     `;
     (document.head || document.documentElement).appendChild(st);
