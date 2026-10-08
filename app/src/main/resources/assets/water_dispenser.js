@@ -170,6 +170,27 @@
         height: auto;
         box-sizing: border-box;
       }
+
+      /* 全收藏模式：左上角楼栋名纯 CSS 占位隐形（不破坏 DOM 树） */
+      body.xl-in-fav-mode .header-title .building,
+      body.xl-in-fav-mode .building {
+        visibility: hidden !important;
+      }
+
+      /* 左上角全收藏标题浮层 (0 DOM 破坏，原位展示) */
+      #xl-fav-title-overlay {
+        display: none;
+        position: absolute;
+        font-size: 18px;
+        font-weight: 700;
+        color: #ffffff;
+        z-index: 99;
+        pointer-events: none;
+        letter-spacing: 0.5px;
+      }
+      body.xl-in-fav-mode #xl-fav-title-overlay {
+        display: block;
+      }
     `;
     (document.head || document.documentElement).appendChild(st);
   }
@@ -490,6 +511,24 @@
     btn.style.display = rect.width > 0 ? 'flex' : 'none';
   }
 
+  // ───────── 10.1 左上角全收藏标题原位浮层 ─────────
+  function updateFavTitleOverlay() {
+    let titleOverlay = document.getElementById('xl-fav-title-overlay');
+    if (!titleOverlay) {
+      titleOverlay = document.createElement('div');
+      titleOverlay.id = 'xl-fav-title-overlay';
+      titleOverlay.textContent = '★ 全部收藏';
+      document.body.appendChild(titleOverlay);
+    }
+    const bEl = document.querySelector('.header-title .building') || document.querySelector('.building');
+    if (bEl) {
+      const r = bEl.getBoundingClientRect();
+      titleOverlay.style.left = (r.left + window.scrollX) + 'px';
+      titleOverlay.style.top = (r.top + window.scrollY) + 'px';
+      titleOverlay.style.lineHeight = r.height + 'px';
+    }
+  }
+
   // ───────── 11. 底部抽屉面板 (改备注与高亮色，5 种经典配色) ─────────
   let sheetInitialized = false;
   let activeTargetRawName = '';
@@ -696,9 +735,12 @@
         }
 
         updateTopFavButton();
+        updateFavTitleOverlay();
       } else {
         const topBtn = document.getElementById('xl-top-fav-btn');
         if (topBtn) topBtn.style.display = 'none';
+        const titleOverlay = document.getElementById('xl-fav-title-overlay');
+        if (titleOverlay) titleOverlay.style.display = 'none';
       }
     } catch (e) {
       console.warn('[XiaoLianPlus] pass error', e);
@@ -719,7 +761,7 @@
     // 忽略我们自己注入的根节点变动
     const isOnlyOurs = muts.every(m => {
       const t = m.target;
-      return t && t.closest && t.closest('#xl-custom-style,#xl-scroll-bottom-spacer,#xl-top-fav-btn,#modern-sheet-root,#xl-fav-native-view');
+      return t && t.closest && t.closest('#xl-custom-style,#xl-scroll-bottom-spacer,#xl-top-fav-btn,#modern-sheet-root,#xl-fav-native-view,#xl-fav-title-overlay');
     });
     if (!isOnlyOurs) {
       debouncedPass();
