@@ -72,26 +72,30 @@ public class SettingsDialog {
         int dp12 = dp2px(context, 12);
         int dp8 = dp2px(context, 8);
 
+        // 弹窗外层主卡片：承载圆角白色背景与视口轮廓裁切
+        LinearLayout dialogRoot = new LinearLayout(context);
+        dialogRoot.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.WHITE);
+        bg.setCornerRadius(dp2px(context, 18));
+        dialogRoot.setBackground(bg);
+        dialogRoot.setClipToOutline(true);
+
         ScrollView scrollView = new ScrollView(context) {
             @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-                int maxH = (int) (getResources().getDisplayMetrics().heightPixels * 0.80);
+                int maxH = (int) (getResources().getDisplayMetrics().heightPixels * 0.68);
                 heightMeasureSpec = MeasureSpec.makeMeasureSpec(maxH, MeasureSpec.AT_MOST);
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec);
             }
         };
         scrollView.setFillViewport(true);
+        scrollView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        scrollView.setVerticalScrollBarEnabled(false);
 
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp20, dp24, dp20, dp24);
-
-        // 圆角白色背景直接赋予外层滚动容器，并开启原生视口轮廓裁切，确保滚动时上下圆角永不被截断
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.WHITE);
-        bg.setCornerRadius(dp2px(context, 18));
-        scrollView.setBackground(bg);
-        scrollView.setClipToOutline(true);
+        root.setPadding(dp20, dp24, dp20, dp12);
 
         // 1. 标题与副标题（居中规整纯净布局）
         TextView tvTitle = new TextView(context);
@@ -269,7 +273,11 @@ public class SettingsDialog {
 
         root.addView(createDivider(context));
 
-        // 4. 底部确定按钮
+        // 4. 底部确定按钮容器（固定在弹窗底部，独立于滚动容器，绝对防刹车吞击）
+        LinearLayout bottomBar = new LinearLayout(context);
+        bottomBar.setOrientation(LinearLayout.VERTICAL);
+        bottomBar.setPadding(dp20, dp8, dp20, dp20);
+
         TextView btnClose = new TextView(context);
         btnClose.setText("完成设置");
         btnClose.setTextSize(15);
@@ -286,8 +294,7 @@ public class SettingsDialog {
 
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        btnLp.topMargin = dp16;
-        root.addView(btnClose, btnLp);
+        bottomBar.addView(btnClose, btnLp);
 
         btnClose.setOnClickListener(v -> dialog.dismiss());
 
@@ -301,7 +308,12 @@ public class SettingsDialog {
         });
 
         scrollView.addView(root);
-        dialog.setContentView(scrollView);
+        dialogRoot.addView(scrollView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        dialogRoot.addView(bottomBar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        dialog.setContentView(dialogRoot);
 
         sCurrentDialog = dialog;
         dialog.show();
@@ -316,6 +328,9 @@ public class SettingsDialog {
     }
 
     private static void enforceWindowState(Dialog d, Window w) {
+        // 强制开启满血 GPU 硬件加速，杜绝高刷屏动态降频卡顿
+        w.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
+
         // 无论之前被谁改过，都恢复：可聚焦、模态、有遮罩
         w.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                 | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
