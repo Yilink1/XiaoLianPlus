@@ -93,7 +93,14 @@
     const st = document.createElement('style');
     st.id = 'xl-custom-style';
     st.textContent = `
-      div.single[data-xl="1"] { flex-shrink: 0 !important; }
+      /* 卡片级原子防抖：未完成置顶排版前保持透明占位，就绪瞬间点亮，杜绝瞬移闪烁 */
+      div.single:not([data-xl="1"]) {
+        opacity: 0 !important;
+      }
+      div.single[data-xl="1"] {
+        opacity: 1 !important;
+        flex-shrink: 0 !important;
+      }
       .xl-aliased { font-size: 0 !important; }
 
       /* 扫码悬浮盾：强制提升至最高图层，永远浮在最上层，绝不被卡片或星标盖过 */
@@ -746,11 +753,14 @@
   }
   window.__xl_refresh__ = pass;
 
-  // 关键防抖保护：避免在 React Fiber 挂载节点时同步介入 DOM
-  let debTimer = null;
-  const debouncedPass = () => {
-    clearTimeout(debTimer);
-    debTimer = setTimeout(pass, 100);
+  // 极速同帧调度：放弃 100ms 假等待，利用 requestAnimationFrame 在浏览器绘制同帧立即完成置顶与挂星
+  let passFrame = null;
+  const fastPass = () => {
+    if (passFrame) cancelAnimationFrame(passFrame);
+    passFrame = requestAnimationFrame(() => {
+      passFrame = null;
+      pass();
+    });
   };
 
   const observer = new MutationObserver((muts) => {
@@ -760,7 +770,7 @@
       return t && t.closest && t.closest('#xl-custom-style,#xl-scroll-bottom-spacer,#xl-top-fav-btn,#modern-sheet-root,#xl-fav-native-view');
     });
     if (!isOnlyOurs) {
-      debouncedPass();
+      fastPass();
     }
   });
 
@@ -770,6 +780,11 @@
   }
   setInterval(pass, 1500);
   pass();
+
+  // 300ms 物理安全兜底：极端网络异常下确保所有水机卡片无条件点亮，绝不白屏
+  setTimeout(() => {
+    document.querySelectorAll('div.single:not([data-xl="1"])').forEach(c => c.setAttribute('data-xl', '1'));
+  }, 300);
 })();
 
 
