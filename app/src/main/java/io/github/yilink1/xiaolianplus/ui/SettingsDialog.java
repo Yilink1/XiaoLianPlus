@@ -136,10 +136,6 @@ public class SettingsDialog {
             addSwitchItem(context, root, "长按0.5秒结算找零", "长按底部胶囊进度条替代横向滑动结算，0.5秒快速找零",
                     ModuleConfig.isWaterHoldToSettleEnabled(context),
                     (buttonView, isChecked) -> ModuleConfig.setWaterHoldToSettleEnabled(context, isChecked));
-
-            addSwitchItem(context, root, "打水页面数据脱敏", "将打水界面中的楼栋位置伪装为虚拟设备（防开盒与隐私泄露）",
-                    ModuleConfig.isWaterDesensitizeEnabled(context),
-                    (buttonView, isChecked) -> ModuleConfig.setWaterDesensitizeEnabled(context, isChecked));
         }
 
         addSwitchItem(context, root, "加载中允许直接扫码", "页面转圈加载时依然能直接点击右下角扫码（支持饮水机、浴室等全部页面）",

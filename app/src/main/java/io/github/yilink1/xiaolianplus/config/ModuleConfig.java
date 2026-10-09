@@ -48,14 +48,13 @@ public class ModuleConfig {
     }
 
     /**
-     * 实验性/打水页面体验优化功能特性总控（脱敏、跳过确认、长按0.5秒结算）
+     * 实验性/打水页面体验优化功能特性总控（跳过确认、长按0.5秒结算）
      * 置为 true：展示弹窗开关，并允许后台功能生效。
      */
     public static final boolean EXPERIMENTAL_FEATURES_ENABLED = true;
 
     public static final String KEY_WATER_AUTO_CONFIRM = "key_water_auto_confirm";
     public static final String KEY_WATER_HOLD_TO_SETTLE = "key_water_hold_to_settle";
-    public static final String KEY_WATER_DESENSITIZE = "key_water_desensitize";
 
     public static boolean isWaterAutoConfirmEnabled(Context context) {
         if (!EXPERIMENTAL_FEATURES_ENABLED) return false;
@@ -73,15 +72,6 @@ public class ModuleConfig {
 
     public static void setWaterHoldToSettleEnabled(Context context, boolean enabled) {
         getPrefs(context).edit().putBoolean(KEY_WATER_HOLD_TO_SETTLE, enabled).apply();
-    }
-
-    public static boolean isWaterDesensitizeEnabled(Context context) {
-        if (!EXPERIMENTAL_FEATURES_ENABLED) return false;
-        return getPrefs(context).getBoolean(KEY_WATER_DESENSITIZE, false);
-    }
-
-    public static void setWaterDesensitizeEnabled(Context context, boolean enabled) {
-        getPrefs(context).edit().putBoolean(KEY_WATER_DESENSITIZE, enabled).apply();
     }
 
     public static boolean isLoadingPassThroughEnabled(Context context) {

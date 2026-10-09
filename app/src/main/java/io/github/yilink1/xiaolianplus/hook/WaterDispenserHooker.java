@@ -515,7 +515,6 @@ public class WaterDispenserHooker {
 
                 boolean autoConfirm = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterAutoConfirmEnabled(targetCtx);
                 boolean holdToSettle = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterHoldToSettleEnabled(targetCtx);
-                boolean desensitize = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterDesensitizeEnabled(targetCtx);
                 boolean defaultAllFav = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterDefaultAllFavEnabled(targetCtx);
                 String settleMode = holdToSettle ? "hold" : "off";
 
@@ -526,7 +525,6 @@ public class WaterDispenserHooker {
                 sb.append("window.__XL_SETTLE_MODE__ = '").append(settleMode).append("';\n");
                 sb.append("window.__XL_CONFIG__ = { autoConfirm: ").append(autoConfirm)
                   .append(", holdToSettle: ").append(holdToSettle)
-                  .append(", desensitize: ").append(desensitize)
                   .append(", defaultAllFav: ").append(defaultAllFav)
                   .append(" };\n");
                 sb.append(mScriptContent != null ? mScriptContent : "").append("\n");
