@@ -179,6 +179,7 @@
 
       /* 全收藏模式：隐藏原版列表，显示并行独立全收藏视图 */
       body.xl-in-fav-mode .scroll-container:not(#xl-fav-native-view),
+      body.xl-in-fav-mode .mescroll-wxs-content > *:not(#xl-fav-native-view),
       body.xl-in-fav-mode div.single.xl-native-card {
         display: none !important;
       }
@@ -192,17 +193,20 @@
 
       /* 全收藏模式：左上角楼栋名纯 CSS 替换（0 新增节点，无倒三角，禁用点击防误触） */
       body.xl-in-fav-mode .header-title .building,
-      body.xl-in-fav-mode .building {
+      body.xl-in-fav-mode .building,
+      body.xl-in-fav-mode .container-head_box_location {
         font-size: 0 !important;
         pointer-events: none !important;
       }
       /* 使用 visibility: hidden 替代 display: none，确保物理碰撞箱在线，退出全收藏时点击瞬间响应绝不吞击 */
       body.xl-in-fav-mode .header-title .building > *,
-      body.xl-in-fav-mode .building > * {
+      body.xl-in-fav-mode .building > *,
+      body.xl-in-fav-mode .container-head_box_location > * {
         visibility: hidden !important;
       }
       body.xl-in-fav-mode .header-title .building::before,
-      body.xl-in-fav-mode .building::before {
+      body.xl-in-fav-mode .building::before,
+      body.xl-in-fav-mode .container-head_box_location::before {
         content: "★ 全部收藏" !important;
         font-size: 0.4rem !important;
         line-height: 24.58px !important;
@@ -525,8 +529,10 @@
       btn.innerHTML = `<span>★ 全部收藏</span><span class="badge">${favCount}</span>`;
     }
 
-    // 精确向下平移约 34px：避开第二行商家名称，对齐第三行服务时间右侧纯净区域
-    btn.style.top = (rect.bottom + window.scrollY + 34) + 'px';
+    // 联网饮水机向下平移 34px 对齐服务时间行；公共饮水机无服务时间行，上移一点点（约 12px）避让下方卡片
+    const isPublicRoom = location.href.includes('publicRoom') || location.hash.includes('publicRoom');
+    const offsetY = isPublicRoom ? 12 : 34;
+    btn.style.top = (rect.bottom + window.scrollY + offsetY) + 'px';
     btn.style.right = (document.documentElement.clientWidth - rect.right) + 'px';
     btn.style.display = rect.width > 0 ? 'flex' : 'none';
   }
