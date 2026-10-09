@@ -37,6 +37,16 @@ public class ModuleConfig {
         getPrefs(context).edit().putBoolean(KEY_WATER_DISPENSER, enabled).apply();
     }
 
+    public static final String KEY_WATER_DEFAULT_ALL_FAV = "key_water_default_all_fav";
+
+    public static boolean isWaterDefaultAllFavEnabled(Context context) {
+        return getPrefs(context).getBoolean(KEY_WATER_DEFAULT_ALL_FAV, false);
+    }
+
+    public static void setWaterDefaultAllFavEnabled(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(KEY_WATER_DEFAULT_ALL_FAV, enabled).apply();
+    }
+
     public static final String KEY_WATER_AUTO_CONFIRM = "key_water_auto_confirm";
     public static final String KEY_WATER_HOLD_TO_SETTLE = "key_water_hold_to_settle";
     public static final String KEY_WATER_DESENSITIZE = "key_water_desensitize";

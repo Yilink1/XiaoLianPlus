@@ -120,9 +120,13 @@ public class SettingsDialog {
                 ModuleConfig.isSplashAdBlockEnabled(context),
                 (buttonView, isChecked) -> ModuleConfig.setSplashAdBlockEnabled(context, isChecked));
 
-        addSwitchItem(context, root, "饮水机备注与收藏", "长按名称改名，点击星标置顶（支持联网/公共饮水机）",
+        addSwitchItem(context, root, "饮水机增强", "长按名称改名，点击星标置顶，增加全部收藏视图（支持联网/公共水机）",
                 ModuleConfig.isWaterDispenserEnabled(context),
                 (buttonView, isChecked) -> ModuleConfig.setWaterDispenserEnabled(context, isChecked));
+
+        addSwitchItem(context, root, "默认进入全部收藏", "打开饮水机界面且有收藏时，优先直接展示全部收藏列表",
+                ModuleConfig.isWaterDefaultAllFavEnabled(context),
+                (buttonView, isChecked) -> ModuleConfig.setWaterDefaultAllFavEnabled(context, isChecked));
 
         addSwitchItem(context, root, "跳过打水确认弹窗", "进入打水页面时自动确认“开始使用”，免去手动二次点击",
                 ModuleConfig.isWaterAutoConfirmEnabled(context),

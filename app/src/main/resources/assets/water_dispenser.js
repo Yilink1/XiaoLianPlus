@@ -93,14 +93,6 @@
     const st = document.createElement('style');
     st.id = 'xl-custom-style';
     st.textContent = `
-      /* 卡片级原子防抖：未完成置顶排版前保持透明占位，就绪瞬间点亮，杜绝瞬移闪烁 */
-      div.single:not([data-xl="1"]) {
-        opacity: 0 !important;
-      }
-      div.single[data-xl="1"] {
-        opacity: 1 !important;
-        flex-shrink: 0 !important;
-      }
       .xl-aliased { font-size: 0 !important; }
 
       /* 扫码悬浮盾：强制提升至最高图层，永远浮在最上层，绝不被卡片或星标盖过 */
@@ -167,7 +159,8 @@
       }
 
       /* 全收藏模式：隐藏原版列表，显示并行独立全收藏视图 */
-      body.xl-in-fav-mode .scroll-container:not(#xl-fav-native-view) {
+      body.xl-in-fav-mode .scroll-container:not(#xl-fav-native-view),
+      body.xl-in-fav-mode div.single.xl-native-card {
         display: none !important;
       }
       #xl-fav-native-view {
@@ -205,11 +198,11 @@
 
   // ───────── 4. 底部安全避让隔离块 ─────────
   function ensureBottomSpacer(targetContainer) {
-    const container = targetContainer || document.querySelector('.scroll-container');
+    const container = targetContainer || document.querySelector('.scroll-container') || document.querySelector('#xl-fav-native-view')?.parentElement;
     if (container && !container.querySelector('#xl-scroll-bottom-spacer')) {
       const spacer = document.createElement('div');
       spacer.id = 'xl-scroll-bottom-spacer';
-      spacer.style.cssText = 'height: 120px !important; width: 100% !important; flex-shrink: 0 !important; pointer-events: none !important; order: 999999 !important;';
+      spacer.style.cssText = 'height: 64px !important; width: 100% !important; flex-shrink: 0 !important; pointer-events: none !important; order: 999999 !important;';
       container.appendChild(spacer);
     }
   }
@@ -372,7 +365,8 @@
   function harvestRecords() {
     const cache = getCachedRecords();
     let changed = false;
-    document.querySelectorAll('.scroll-container:not(#xl-fav-native-view) div.single').forEach(card => {
+    document.querySelectorAll('div.single').forEach(card => {
+      if (card.closest('#xl-fav-native-view')) return;
       const rk = Object.keys(card).find(k => k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance'));
       const fiber = card[rk];
       const rec = fiber?.memoizedProps?.['data-record'] || fiber?.return?.memoizedProps?.['data-record'] || card.dataset.record;
@@ -412,7 +406,8 @@
   let isFavMode = false;
 
   function renderFavNativeView(templateCard) {
-    const origScroll = document.querySelector('.scroll-container:not(#xl-fav-native-view)');
+    const origScroll = document.querySelector('.scroll-container:not(#xl-fav-native-view)')
+      || (templateCard && templateCard.parentElement);
     if (!origScroll || !origScroll.parentElement) return;
 
     let favView = document.getElementById('xl-fav-native-view');
@@ -440,6 +435,7 @@
         // 清除旧克隆节点残留，确保全新绑定
         card.querySelectorAll('.xl-card-star, .xl-alias').forEach(n => n.remove());
         delete card.dataset.xlBound;
+        card.classList.remove('xl-native-card');
 
         card.setAttribute('data-raw', rawName);
         card.setAttribute('data-xl', '1');
@@ -485,7 +481,7 @@
 
   // ───────── 10. 顶部【★ 全部收藏】胶囊按钮 ─────────
   function updateTopFavButton() {
-    const pwdBtn = document.querySelector('.l-button.setPassBtn') || document.querySelector('.setPassBtn');
+    const pwdBtn = document.querySelector('.l-button.setPassBtn') || document.querySelector('.setPassBtn') || document.querySelector('.set_password');
     let btn = document.getElementById('xl-top-fav-btn');
     if (!pwdBtn) {
       if (btn) btn.style.display = 'none';
@@ -695,6 +691,8 @@
 
   // ───────── 12. 主流程渲染 (防抖保护与全流程协同) ─────────
   let passing = false;
+  let favModeChecked = false;
+
   function pass() {
     if (passing) return;
     passing = true;
@@ -703,16 +701,27 @@
       initSheet();
       harvestRecords();
 
-      const nativeCards = Array.from(document.querySelectorAll('.scroll-container:not(#xl-fav-native-view) div.single'))
-        .filter(c => isDispenserCard(c));
+      // 1. 抓取真实饮水机卡片（排除全收藏克隆视图，支持所有合法列表容器）
+      const nativeCards = Array.from(document.querySelectorAll('div.single'))
+        .filter(c => !c.closest('#xl-fav-native-view') && isDispenserCard(c));
 
       if (nativeCards.length > 0) {
         const favs = getFavs(), aliases = getAliases();
 
-        // 1. 刷新原生卡片的基础能力（长按备注、星标绑定、别名）
+        // 默认进入全部收藏策略检查（首屏只在有收藏且配置开启时自动激活一次）
+        if (!favModeChecked) {
+          favModeChecked = true;
+          const cfg = window.__XL_CONFIG__ || {};
+          if (cfg.defaultAllFav && favs.length > 0) {
+            isFavMode = true;
+          }
+        }
+
+        // 刷新原生卡片的基础能力（长按备注、星标绑定、别名）
         nativeCards.forEach((card, i) => {
           const raw = nameOf(card);
           if (card.dataset.xl !== '1') card.setAttribute('data-xl', '1');
+          card.classList.add('xl-native-card');
           bindCardLongPress(card);
           applyAlias(card, raw, aliases[raw]);
           attachInlineStar(card);
@@ -722,7 +731,7 @@
           card.style.order = String(fi >= 0 ? (-1000 + fi) : i);
         });
 
-        const nativeScroll = nativeCards[0]?.closest('.scroll-container');
+        const nativeScroll = nativeCards[0]?.closest('.scroll-container') || nativeCards[0]?.parentElement;
         if (nativeScroll) {
           ensureBottomSpacer(nativeScroll);
           const d = getComputedStyle(nativeScroll).display;
@@ -732,7 +741,7 @@
           }
         }
 
-        // 2. 模式切换处理
+        // 模式切换处理
         let favView = document.getElementById('xl-fav-native-view');
         if (isFavMode) {
           document.body.classList.add('xl-in-fav-mode');
@@ -783,11 +792,6 @@
   }
   setInterval(pass, 1500);
   pass();
-
-  // 300ms 物理安全兜底：极端网络异常下确保所有水机卡片无条件点亮，绝不白屏
-  setTimeout(() => {
-    document.querySelectorAll('div.single:not([data-xl="1"])').forEach(c => c.setAttribute('data-xl', '1'));
-  }, 300);
 })();
 
 
