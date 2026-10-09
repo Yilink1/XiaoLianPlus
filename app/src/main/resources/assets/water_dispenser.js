@@ -673,6 +673,7 @@
       const aliases = getAliases();
       const cur = aliases[raw] || {};
       inputAlias.value = cur.name || '';
+      inputAlias.placeholder = raw;
       toggleRaw.checked = cur.showRaw !== false;
       selectedColor = cur.color || 'default';
 
@@ -680,16 +681,63 @@
 
       backdrop.style.pointerEvents = 'auto';
       backdrop.style.opacity = '1';
+      panel.style.transition = 'bottom 0.28s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s ease';
+      panel.style.transform = 'translateY(0)';
       panel.style.bottom = '0';
     };
 
     function closeSheet() {
       backdrop.style.opacity = '0';
       backdrop.style.pointerEvents = 'none';
-      panel.style.bottom = '-100%';
+      panel.style.transition = 'bottom 0.24s ease, transform 0.24s ease';
+      panel.style.transform = 'translateY(100%)';
+      setTimeout(() => {
+        panel.style.bottom = '-100%';
+        panel.style.transform = '';
+      }, 250);
     }
 
     backdrop.onclick = () => closeSheet();
+
+    // 下滑手势滑动关闭 (Swipe-down to dismiss)
+    let touchStartY = 0;
+    let currentTranslateY = 0;
+    let isDragging = false;
+
+    panel.addEventListener('touchstart', (e) => {
+      if (e.target === inputAlias) return; // 避免打字光标冲突
+      touchStartY = e.touches[0].clientY;
+      currentTranslateY = 0;
+      isDragging = true;
+      panel.style.transition = 'none';
+    }, { passive: true });
+
+    panel.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      const deltaY = e.touches[0].clientY - touchStartY;
+      if (deltaY > 0) {
+        currentTranslateY = deltaY;
+        panel.style.transform = `translateY(${deltaY}px)`;
+        const fade = Math.max(0, 1 - deltaY / 260);
+        backdrop.style.opacity = `${fade}`;
+      }
+    }, { passive: true });
+
+    const handleTouchEnd = () => {
+      if (!isDragging) return;
+      isDragging = false;
+      panel.style.transition = 'transform 0.25s cubic-bezier(0.2, 0, 0, 1), bottom 0.25s ease';
+      if (currentTranslateY > 75) {
+        closeSheet();
+      } else {
+        panel.style.transform = 'translateY(0)';
+        backdrop.style.opacity = '1';
+      }
+      currentTranslateY = 0;
+    };
+
+    panel.addEventListener('touchend', handleTouchEnd);
+    panel.addEventListener('touchcancel', handleTouchEnd);
 
     saveBtn.onclick = () => {
       const aliases = getAliases();
