@@ -116,29 +116,13 @@ public class SettingsDialog {
         root.addView(createDivider(context));
 
         // 2. 开关群
-        addSwitchItem(context, root, "跳过开屏广告", null,
+        addSectionHeader(context, root, "基础与通用");
+
+        addSwitchItem(context, root, "跳过开屏广告", "打开应用时自动跳过启动页广告",
                 ModuleConfig.isSplashAdBlockEnabled(context),
                 (buttonView, isChecked) -> ModuleConfig.setSplashAdBlockEnabled(context, isChecked));
 
-        addSwitchItem(context, root, "饮水机增强", "长按名称备注，点击星标置顶，增加全部收藏视图（支持联网/公共水机）",
-                ModuleConfig.isWaterDispenserEnabled(context),
-                (buttonView, isChecked) -> ModuleConfig.setWaterDispenserEnabled(context, isChecked));
-
-        addSwitchItem(context, root, "默认进入全部收藏", "打开饮水机界面且有收藏时，优先直接展示全部收藏列表",
-                ModuleConfig.isWaterDefaultAllFavEnabled(context),
-                (buttonView, isChecked) -> ModuleConfig.setWaterDefaultAllFavEnabled(context, isChecked));
-
-        if (ModuleConfig.EXPERIMENTAL_FEATURES_ENABLED) {
-            addSwitchItem(context, root, "跳过打水确认弹窗", "进入打水页面时自动确认“开始使用”，免去手动二次点击",
-                    ModuleConfig.isWaterAutoConfirmEnabled(context),
-                    (buttonView, isChecked) -> ModuleConfig.setWaterAutoConfirmEnabled(context, isChecked));
-
-            addSwitchItem(context, root, "长按0.5秒结算找零", "长按底部胶囊进度条替代横向滑动结算，0.5秒快速找零",
-                    ModuleConfig.isWaterHoldToSettleEnabled(context),
-                    (buttonView, isChecked) -> ModuleConfig.setWaterHoldToSettleEnabled(context, isChecked));
-        }
-
-        addSwitchItem(context, root, "加载中允许直接扫码", "页面转圈加载时依然能直接点击右下角扫码（支持饮水机、浴室等全部页面）",
+        addSwitchItem(context, root, "加载中允许直接扫码", "页面正在加载列表时，依然可以直接点击右下角扫码",
                 ModuleConfig.isLoadingPassThroughEnabled(context),
                 (buttonView, isChecked) -> ModuleConfig.setLoadingPassThroughEnabled(context, isChecked));
 
@@ -146,6 +130,28 @@ public class SettingsDialog {
             addSwitchItem(context, root, "关闭低版本提示", "低于 1.5.7 版本不再提示",
                     ModuleConfig.isIgnoreLowVersionPrompt(context),
                     (buttonView, isChecked) -> ModuleConfig.setIgnoreLowVersionPrompt(context, isChecked));
+        }
+
+        addSectionHeader(context, root, "饮水机");
+
+        addSwitchItem(context, root, "饮水机备注与收藏", "点击星星收藏置顶，长按水机名称修改备注，支持全部收藏视图（支持联网/公共水机）",
+                ModuleConfig.isWaterDispenserEnabled(context),
+                (buttonView, isChecked) -> ModuleConfig.setWaterDispenserEnabled(context, isChecked));
+
+        addSwitchItem(context, root, "默认进入全部收藏", "打开饮水机页面时，有收藏则优先展示“全部收藏”",
+                ModuleConfig.isWaterDefaultAllFavEnabled(context),
+                (buttonView, isChecked) -> ModuleConfig.setWaterDefaultAllFavEnabled(context, isChecked));
+
+        if (ModuleConfig.EXPERIMENTAL_FEATURES_ENABLED) {
+            addSectionHeader(context, root, "设备使用与结算");
+
+            addSwitchItem(context, root, "跳过“开始使用”二次确认", "点击“开始使用”后自动确认弹窗，省去手动二次确认",
+                    ModuleConfig.isWaterAutoConfirmEnabled(context),
+                    (buttonView, isChecked) -> ModuleConfig.setWaterAutoConfirmEnabled(context, isChecked));
+
+            addSwitchItem(context, root, "长按快速结算找零", "长按滑块 0.5 秒即可结算，无需费力向右拖动",
+                    ModuleConfig.isWaterHoldToSettleEnabled(context),
+                    (buttonView, isChecked) -> ModuleConfig.setWaterHoldToSettleEnabled(context, isChecked));
         }
 
         View rowWebDebug = addSwitchItem(context, root, "网页调试模式", null,
@@ -170,16 +176,8 @@ public class SettingsDialog {
             }
         }
 
-        root.addView(createDivider(context));
-
         // 3. APP启动直达策略（单选组）
-        TextView tvDirectTitle = new TextView(context);
-        tvDirectTitle.setText("APP启动直达策略");
-        tvDirectTitle.setTextSize(14);
-        tvDirectTitle.setTextColor(Color.parseColor("#262626"));
-        tvDirectTitle.getPaint().setFakeBoldText(true);
-        tvDirectTitle.setPadding(0, dp12, 0, dp8);
-        root.addView(tvDirectTitle);
+        addSectionHeader(context, root, "APP启动直达策略");
 
         RadioGroup radioGroup = new RadioGroup(context);
         radioGroup.setOrientation(LinearLayout.VERTICAL);
@@ -392,6 +390,16 @@ public class SettingsDialog {
 
         parent.addView(row);
         return row;
+    }
+
+    private static void addSectionHeader(Context context, LinearLayout parent, String title) {
+        TextView tv = new TextView(context);
+        tv.setText(title);
+        tv.setTextSize(13);
+        tv.setTextColor(Color.parseColor("#1677ff"));
+        tv.getPaint().setFakeBoldText(true);
+        tv.setPadding(0, dp2px(context, 14), 0, dp2px(context, 4));
+        parent.addView(tv);
     }
 
     private static RadioButton createRadioButton(Context context, String text, int tagVal) {
