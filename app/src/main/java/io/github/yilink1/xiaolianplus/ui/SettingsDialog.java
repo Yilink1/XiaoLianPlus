@@ -4,9 +4,11 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.os.Build;
 import android.view.Gravity;
 import android.view.View;
@@ -84,7 +86,7 @@ public class SettingsDialog {
         ScrollView scrollView = new ScrollView(context) {
             @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-                int maxH = (int) (getResources().getDisplayMetrics().heightPixels * 0.68);
+                int maxH = (int) (getResources().getDisplayMetrics().heightPixels * 0.78);
                 heightMeasureSpec = MeasureSpec.makeMeasureSpec(maxH, MeasureSpec.AT_MOST);
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec);
             }
@@ -227,14 +229,14 @@ public class SettingsDialog {
         TextView btnDevicePicker = new TextView(context);
         btnDevicePicker.setText(selectedDevice + "  ▾");
         btnDevicePicker.setTextSize(12);
-        btnDevicePicker.setTextColor(Color.parseColor("#1677ff"));
+        btnDevicePicker.setTextColor(Color.parseColor("#1082FF"));
         btnDevicePicker.getPaint().setFakeBoldText(true);
         btnDevicePicker.setPadding(dp2px(context, 10), dp2px(context, 4), dp2px(context, 10), dp2px(context, 4));
 
         GradientDrawable pickerBg = new GradientDrawable();
-        pickerBg.setColor(Color.parseColor("#f0f5ff"));
+        pickerBg.setColor(Color.parseColor("#EAF2FF"));
         pickerBg.setCornerRadius(dp2px(context, 6));
-        pickerBg.setStroke(dp2px(context, 1), Color.parseColor("#d6e4ff"));
+        pickerBg.setStroke(dp2px(context, 1), Color.parseColor("#CCE1FF"));
         btnDevicePicker.setBackground(pickerBg);
 
         btnDevicePicker.setOnClickListener(v -> {
@@ -273,23 +275,31 @@ public class SettingsDialog {
 
         root.addView(createDivider(context));
 
-        // 4. 底部确定按钮容器（固定在弹窗底部，独立于滚动容器，绝对防刹车吞击）
+        // 4. 底部确定按钮（Soft UI 浅色胶囊微按钮，上下微胖饱满，留足呼吸间距）
         LinearLayout bottomBar = new LinearLayout(context);
         bottomBar.setOrientation(LinearLayout.VERTICAL);
-        bottomBar.setPadding(dp20, dp8, dp20, dp20);
+        bottomBar.setPadding(dp20, dp2px(context, 14), dp20, dp2px(context, 18));
 
         TextView btnClose = new TextView(context);
         btnClose.setText("完成设置");
         btnClose.setTextSize(15);
-        btnClose.setTextColor(Color.WHITE);
+        btnClose.setTextColor(Color.parseColor("#1082FF"));
         btnClose.getPaint().setFakeBoldText(true);
         btnClose.setGravity(Gravity.CENTER);
         int btnPad = dp2px(context, 12);
         btnClose.setPadding(0, btnPad, 0, btnPad);
 
-        GradientDrawable btnBg = new GradientDrawable();
-        btnBg.setColor(Color.parseColor("#1677ff"));
-        btnBg.setCornerRadius(dp2px(context, 10));
+        GradientDrawable normalBg = new GradientDrawable();
+        normalBg.setColor(Color.parseColor("#EAF2FF"));
+        normalBg.setCornerRadius(dp2px(context, 24));
+
+        GradientDrawable pressedBg = new GradientDrawable();
+        pressedBg.setColor(Color.parseColor("#D6E7FF"));
+        pressedBg.setCornerRadius(dp2px(context, 24));
+
+        StateListDrawable btnBg = new StateListDrawable();
+        btnBg.addState(new int[]{android.R.attr.state_pressed}, pressedBg);
+        btnBg.addState(new int[]{}, normalBg);
         btnClose.setBackground(btnBg);
 
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
@@ -386,6 +396,22 @@ public class SettingsDialog {
         Switch sw = new Switch(context);
         sw.setChecked(initialValue);
         sw.setOnCheckedChangeListener(listener);
+
+        // 开启状态完全保留原版配色，关闭状态滑块改回纯白色(#FFFFFF)
+        int[][] states = new int[][] {
+            new int[] { android.R.attr.state_checked },
+            new int[] { -android.R.attr.state_checked }
+        };
+        int[] thumbColors = new int[] {
+            Color.parseColor("#1082FF"),
+            Color.parseColor("#FFFFFF")
+        };
+        int[] trackColors = new int[] {
+            Color.argb(100, 16, 130, 255),
+            Color.parseColor("#E0E0E0")
+        };
+        sw.setThumbTintList(new ColorStateList(states, thumbColors));
+        sw.setTrackTintList(new ColorStateList(states, trackColors));
         row.addView(sw);
 
         parent.addView(row);
@@ -396,7 +422,7 @@ public class SettingsDialog {
         TextView tv = new TextView(context);
         tv.setText(title);
         tv.setTextSize(13);
-        tv.setTextColor(Color.parseColor("#1677ff"));
+        tv.setTextColor(Color.parseColor("#1082FF"));
         tv.getPaint().setFakeBoldText(true);
         tv.setPadding(0, dp2px(context, 14), 0, dp2px(context, 4));
         parent.addView(tv);
@@ -410,6 +436,16 @@ public class SettingsDialog {
         rb.setTextColor(Color.parseColor("#595959"));
         rb.setTag(tagVal);
         rb.setPadding(dp2px(context, 6), dp2px(context, 6), 0, dp2px(context, 6));
+
+        int[][] states = new int[][] {
+            new int[] { android.R.attr.state_checked },
+            new int[] { -android.R.attr.state_checked }
+        };
+        int[] rbColors = new int[] {
+            Color.parseColor("#1082FF"),
+            Color.parseColor("#8C8C8C")
+        };
+        rb.setButtonTintList(new ColorStateList(states, rbColors));
         return rb;
     }
 
