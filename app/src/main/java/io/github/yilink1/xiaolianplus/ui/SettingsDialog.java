@@ -5,7 +5,11 @@ import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.res.ColorStateList;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.CornerPathEffect;
+import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
@@ -108,9 +112,11 @@ public class SettingsDialog {
         root.addView(tvTitle);
 
         TextView tvSub = new TextView(context);
-        tvSub.setText("轻量、稳定、去广告的定制体验");
-        tvSub.setTextSize(12);
-        tvSub.setTextColor(Color.parseColor("#8c8c8c"));
+        tvSub.setText("XIAOLIAN PLUS");
+        tvSub.setTextSize(11);
+        tvSub.setLetterSpacing(0.12f);
+        tvSub.setTextColor(Color.parseColor("#1082FF"));
+        tvSub.getPaint().setFakeBoldText(true);
         tvSub.setPadding(0, dp2px(context, 4), 0, dp16);
         root.addView(tvSub);
 
@@ -149,9 +155,21 @@ public class SettingsDialog {
 
             addSwitchItem(context, root, "跳过“开始使用”二次确认", "点击“开始使用”后自动确认弹窗，省去手动二次确认",
                     ModuleConfig.isWaterAutoConfirmEnabled(context),
-                    (buttonView, isChecked) -> ModuleConfig.setWaterAutoConfirmEnabled(context, isChecked));
+                    (buttonView, isChecked) -> {
+                        if (isChecked && !ModuleConfig.hasSeenAutoConfirmTip(context)) {
+                            showAutoConfirmTipDialog(context, () -> {
+                                ModuleConfig.setHasSeenAutoConfirmTip(context, true);
+                                ModuleConfig.setWaterAutoConfirmEnabled(context, true);
+                            }, () -> {
+                                buttonView.setChecked(false);
+                                ModuleConfig.setWaterAutoConfirmEnabled(context, false);
+                            });
+                        } else {
+                            ModuleConfig.setWaterAutoConfirmEnabled(context, isChecked);
+                        }
+                    });
 
-            addSwitchItem(context, root, "长按快速结算找零", "长按滑块 0.5 秒即可结算，无需费力向右拖动",
+            addSwitchItem(context, root, "长按滑块快速结算", "长按滑块 0.5 秒即可结算，无需费力向右拖动",
                     ModuleConfig.isWaterHoldToSettleEnabled(context),
                     (buttonView, isChecked) -> ModuleConfig.setWaterHoldToSettleEnabled(context, isChecked));
         }
@@ -256,18 +274,13 @@ public class SettingsDialog {
                 }
             }
 
-            new AlertDialog.Builder(context)
-                .setTitle("选择直达目标设备")
-                .setSingleChoiceItems(names, checkedItem, (dialogInterface, which) -> {
-                    String chosen = names[which];
-                    ModuleConfig.setSelectedDeviceName(context, chosen);
-                    btnDevicePicker.setText(chosen + "  ▾");
-                    rbDevice.setChecked(true);
-                    ModuleConfig.setDirectLaunchMode(context, ModuleConfig.DIRECT_LAUNCH_DISPENSER);
-                    dialogInterface.dismiss();
-                })
-                .setNegativeButton("取消", null)
-                .show();
+            showModernSingleChoiceDialog(context, "选择直达目标设备", names, checkedItem, which -> {
+                String chosen = names[which];
+                ModuleConfig.setSelectedDeviceName(context, chosen);
+                btnDevicePicker.setText(chosen + "  ▾");
+                rbDevice.setChecked(true);
+                ModuleConfig.setDirectLaunchMode(context, ModuleConfig.DIRECT_LAUNCH_DISPENSER);
+            });
         });
 
         devicePickerRow.addView(btnDevicePicker);
@@ -497,5 +510,312 @@ public class SettingsDialog {
         } catch (Throwable ignored) {
         }
         return false;
+    }
+
+    private interface OnItemSelectCallback {
+        void onSelected(int index);
+    }
+
+    private static void showAutoConfirmTipDialog(Context context, Runnable onPositive, Runnable onNegative) {
+        Activity act = findActivity(context);
+        if (act == null || act.isFinishing() || act.isDestroyed()) return;
+
+        Dialog d = new Dialog(act);
+        d.setCancelable(true);
+        d.setCanceledOnTouchOutside(true);
+
+        LinearLayout card = new LinearLayout(act);
+        card.setOrientation(LinearLayout.VERTICAL);
+        int padH = dp2px(act, 22);
+        int padV = dp2px(act, 22);
+        card.setPadding(padH, padV, padH, padV);
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.WHITE);
+        bg.setCornerRadius(dp2px(act, 20));
+        card.setBackground(bg);
+
+        // 1. 顶部 Header 行 (警告角标 + 首次开启提醒)
+        LinearLayout headerRow = new LinearLayout(act);
+        headerRow.setOrientation(LinearLayout.HORIZONTAL);
+        headerRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        FrameLayout badge = new FrameLayout(act);
+        int badgeSize = dp2px(act, 36);
+        badge.setLayoutParams(new LinearLayout.LayoutParams(badgeSize, badgeSize));
+        GradientDrawable badgeBg = new GradientDrawable();
+        badgeBg.setColor(Color.parseColor("#FEF3C7"));
+        badgeBg.setCornerRadius(dp2px(act, 9));
+        badge.setBackground(badgeBg);
+
+        View iconView = new View(act) {
+            private final Paint mPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            private final Path mPath = new Path();
+            private final CornerPathEffect mCornerEffect = new CornerPathEffect(dp2px(act, 2.2f));
+
+            @Override
+            protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                float w = getWidth();
+                float h = getHeight();
+                if (w <= 0 || h <= 0) return;
+
+                mPaint.setColor(Color.parseColor("#D97706"));
+                mPaint.setStyle(Paint.Style.STROKE);
+                mPaint.setStrokeWidth(dp2px(getContext(), 1.8f));
+                mPaint.setStrokeCap(Paint.Cap.ROUND);
+                mPaint.setStrokeJoin(Paint.Join.ROUND);
+                mPaint.setPathEffect(mCornerEffect);
+
+                float padH = dp2px(getContext(), 1.5f);
+                float padTop = dp2px(getContext(), 1.5f);
+                float padBottom = dp2px(getContext(), 2f);
+
+                float topX = w / 2f;
+                float topY = padTop;
+                float bottomY = h - padBottom;
+                float leftX = padH;
+                float rightX = w - padH;
+
+                mPath.reset();
+                mPath.moveTo(topX, topY);
+                mPath.lineTo(rightX, bottomY);
+                mPath.lineTo(leftX, bottomY);
+                mPath.close();
+                canvas.drawPath(mPath, mPaint);
+
+                mPaint.setPathEffect(null);
+                mPaint.setStrokeWidth(dp2px(getContext(), 1.8f));
+                float midY = (topY + bottomY) / 2f;
+                canvas.drawLine(topX, midY - dp2px(getContext(), 3.5f), topX, midY + dp2px(getContext(), 1.5f), mPaint);
+
+                mPaint.setStyle(Paint.Style.FILL);
+                canvas.drawCircle(topX, bottomY - dp2px(getContext(), 3f), dp2px(getContext(), 1.0f), mPaint);
+            }
+        };
+        FrameLayout.LayoutParams iconLp = new FrameLayout.LayoutParams(dp2px(act, 19), dp2px(act, 19));
+        iconLp.gravity = Gravity.CENTER;
+        badge.addView(iconView, iconLp);
+        headerRow.addView(badge);
+
+        TextView tvTitle = new TextView(act);
+        tvTitle.setText("首次开启提醒");
+        tvTitle.setTextSize(16);
+        tvTitle.setTextColor(Color.parseColor("#1F1F1F"));
+        tvTitle.getPaint().setFakeBoldText(true);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleLp.leftMargin = dp2px(act, 10);
+        tvTitle.setLayoutParams(titleLp);
+        headerRow.addView(tvTitle);
+
+        card.addView(headerRow);
+
+        // 2. 浅黄底色变化说明卡片
+        LinearLayout noticeBox = new LinearLayout(act);
+        noticeBox.setOrientation(LinearLayout.VERTICAL);
+        int nbPadH = dp2px(act, 14);
+        int nbPadV = dp2px(act, 12);
+        noticeBox.setPadding(nbPadH, nbPadV, nbPadH, nbPadV);
+
+        GradientDrawable nbBg = new GradientDrawable();
+        nbBg.setColor(Color.parseColor("#FFFBEB"));
+        nbBg.setStroke(dp2px(act, 1), Color.parseColor("#FDE68A"));
+        nbBg.setCornerRadius(dp2px(act, 12));
+        noticeBox.setBackground(nbBg);
+
+        LinearLayout.LayoutParams nbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        nbLp.topMargin = dp2px(act, 16);
+        noticeBox.setLayoutParams(nbLp);
+
+        TextView tvNoticeTitle = new TextView(act);
+        tvNoticeTitle.setText("开启后将发生以下变化");
+        tvNoticeTitle.setTextSize(13.5f);
+        tvNoticeTitle.setTextColor(Color.parseColor("#B45309"));
+        tvNoticeTitle.getPaint().setFakeBoldText(true);
+        noticeBox.addView(tvNoticeTitle);
+
+        TextView tvNoticeContent = new TextView(act);
+        tvNoticeContent.setText("点击「开始使用」后将直接出水，不再弹出二次确认");
+        tvNoticeContent.setTextSize(13);
+        tvNoticeContent.setTextColor(Color.parseColor("#4B5563"));
+        tvNoticeContent.setLineSpacing(dp2px(act, 4), 1.0f);
+        tvNoticeContent.setPadding(0, dp2px(act, 6), 0, 0);
+        noticeBox.addView(tvNoticeContent);
+
+        card.addView(noticeBox);
+
+        // 3. 补充说明文案 (正文颜色加深至 #686868，适度字号与1.5倍行距，去句号)
+        TextView tvSecondaryNote = new TextView(act);
+        tvSecondaryNote.setText("此功能不会在进入页面时自动扣款，请在准备就绪后再点击使用");
+        tvSecondaryNote.setTextSize(13);
+        tvSecondaryNote.setTextColor(Color.parseColor("#686868"));
+        tvSecondaryNote.setLineSpacing(dp2px(act, 4.5f), 1.0f);
+        LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        noteLp.topMargin = dp2px(act, 16);
+        noteLp.bottomMargin = dp2px(act, 22);
+        tvSecondaryNote.setLayoutParams(noteLp);
+        card.addView(tvSecondaryNote);
+
+        // 4. 双操作按钮 (1:1 等宽对称设计，四字对仗：暂不开启 vs 确认开启)
+        LinearLayout btnRow = new LinearLayout(act);
+        btnRow.setOrientation(LinearLayout.HORIZONTAL);
+
+        TextView btnNeg = new TextView(act);
+        btnNeg.setText("暂不开启");
+        btnNeg.setTextSize(14);
+        btnNeg.setTextColor(Color.parseColor("#4B5563"));
+        btnNeg.getPaint().setFakeBoldText(true);
+        btnNeg.setGravity(Gravity.CENTER);
+        int bPad = dp2px(act, 11);
+        btnNeg.setPadding(0, bPad, 0, bPad);
+
+        GradientDrawable negBg = new GradientDrawable();
+        negBg.setColor(Color.WHITE);
+        negBg.setStroke(dp2px(act, 1), Color.parseColor("#E5E7EB"));
+        negBg.setCornerRadius(dp2px(act, 12));
+        btnNeg.setBackground(negBg);
+
+        TextView btnPos = new TextView(act);
+        btnPos.setText("确认开启");
+        btnPos.setTextSize(14);
+        btnPos.setTextColor(Color.WHITE);
+        btnPos.getPaint().setFakeBoldText(true);
+        btnPos.setGravity(Gravity.CENTER);
+        btnPos.setPadding(0, bPad, 0, bPad);
+
+        GradientDrawable posBg = new GradientDrawable();
+        posBg.setColor(Color.parseColor("#1082FF"));
+        posBg.setCornerRadius(dp2px(act, 12));
+        btnPos.setBackground(posBg);
+
+        // 严格 1:1 等宽
+        LinearLayout.LayoutParams lpNeg = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        lpNeg.rightMargin = dp2px(act, 10);
+        btnRow.addView(btnNeg, lpNeg);
+
+        LinearLayout.LayoutParams lpPos = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        btnRow.addView(btnPos, lpPos);
+
+        card.addView(btnRow);
+
+        d.setContentView(card);
+
+        final boolean[] handled = {false};
+        btnNeg.setOnClickListener(v -> {
+            handled[0] = true;
+            d.dismiss();
+            if (onNegative != null) onNegative.run();
+        });
+        btnPos.setOnClickListener(v -> {
+            handled[0] = true;
+            d.dismiss();
+            if (onPositive != null) onPositive.run();
+        });
+        d.setOnCancelListener(dialogInterface -> {
+            if (!handled[0] && onNegative != null) onNegative.run();
+        });
+
+        d.show();
+        Window w = d.getWindow();
+        if (w != null) {
+            int width = (int) (act.getResources().getDisplayMetrics().widthPixels * 0.80);
+            w.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT);
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            enforceWindowState(d, w);
+        }
+    }
+
+    private static void showModernSingleChoiceDialog(Context context, String title, String[] items, int checkedIndex,
+                                                      OnItemSelectCallback callback) {
+        Activity act = findActivity(context);
+        if (act == null || act.isFinishing() || act.isDestroyed()) return;
+
+        Dialog d = new Dialog(act);
+        d.setCancelable(true);
+        d.setCanceledOnTouchOutside(true);
+
+        LinearLayout card = new LinearLayout(act);
+        card.setOrientation(LinearLayout.VERTICAL);
+        int padH = dp2px(act, 22);
+        card.setPadding(padH, dp2px(act, 20), padH, dp2px(act, 16));
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.WHITE);
+        bg.setCornerRadius(dp2px(act, 20));
+        card.setBackground(bg);
+
+        TextView tvTitle = new TextView(act);
+        tvTitle.setText(title);
+        tvTitle.setTextSize(17);
+        tvTitle.setTextColor(Color.parseColor("#1f1f1f"));
+        tvTitle.getPaint().setFakeBoldText(true);
+        card.addView(tvTitle);
+
+        ScrollView sv = new ScrollView(act);
+        LinearLayout listRoot = new LinearLayout(act);
+        listRoot.setOrientation(LinearLayout.VERTICAL);
+        listRoot.setPadding(0, dp2px(act, 12), 0, dp2px(act, 8));
+
+        int[][] states = new int[][] {
+            new int[] { android.R.attr.state_checked },
+            new int[] { -android.R.attr.state_checked }
+        };
+        int[] rbColors = new int[] {
+            Color.parseColor("#1082FF"),
+            Color.parseColor("#8C8C8C")
+        };
+
+        for (int i = 0; i < items.length; i++) {
+            final int idx = i;
+            LinearLayout itemRow = new LinearLayout(act);
+            itemRow.setOrientation(LinearLayout.HORIZONTAL);
+            itemRow.setGravity(Gravity.CENTER_VERTICAL);
+            itemRow.setPadding(0, dp2px(act, 10), 0, dp2px(act, 10));
+
+            RadioButton rb = new RadioButton(act);
+            rb.setChecked(i == checkedIndex);
+            rb.setButtonTintList(new ColorStateList(states, rbColors));
+            rb.setClickable(false);
+            itemRow.addView(rb);
+
+            TextView tvItem = new TextView(act);
+            tvItem.setText(items[i]);
+            tvItem.setTextSize(14);
+            tvItem.setTextColor(i == checkedIndex ? Color.parseColor("#1082FF") : Color.parseColor("#262626"));
+            if (i == checkedIndex) tvItem.getPaint().setFakeBoldText(true);
+            tvItem.setPadding(dp2px(act, 8), 0, 0, 0);
+            itemRow.addView(tvItem);
+
+            itemRow.setOnClickListener(v -> {
+                d.dismiss();
+                if (callback != null) callback.onSelected(idx);
+            });
+
+            listRoot.addView(itemRow);
+        }
+
+        sv.addView(listRoot);
+        card.addView(sv, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView btnCancel = new TextView(act);
+        btnCancel.setText("取消");
+        btnCancel.setTextSize(14);
+        btnCancel.setTextColor(Color.parseColor("#8C8C8C"));
+        btnCancel.setGravity(Gravity.CENTER);
+        btnCancel.setPadding(0, dp2px(act, 10), 0, 0);
+        btnCancel.setOnClickListener(v -> d.dismiss());
+        card.addView(btnCancel);
+
+        d.setContentView(card);
+        d.show();
+
+        Window w = d.getWindow();
+        if (w != null) {
+            int width = (int) (act.getResources().getDisplayMetrics().widthPixels * 0.82);
+            w.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT);
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            enforceWindowState(d, w);
+        }
     }
 }

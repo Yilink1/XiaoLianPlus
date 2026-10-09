@@ -54,6 +54,7 @@ public class ModuleConfig {
     public static final boolean EXPERIMENTAL_FEATURES_ENABLED = true;
 
     public static final String KEY_WATER_AUTO_CONFIRM = "key_water_auto_confirm";
+    public static final String KEY_HAS_SEEN_AUTO_CONFIRM_TIP = "key_has_seen_auto_confirm_tip";
     public static final String KEY_WATER_HOLD_TO_SETTLE = "key_water_hold_to_settle";
 
     public static boolean isWaterAutoConfirmEnabled(Context context) {
@@ -63,6 +64,14 @@ public class ModuleConfig {
 
     public static void setWaterAutoConfirmEnabled(Context context, boolean enabled) {
         getPrefs(context).edit().putBoolean(KEY_WATER_AUTO_CONFIRM, enabled).apply();
+    }
+
+    public static boolean hasSeenAutoConfirmTip(Context context) {
+        return getPrefs(context).getBoolean(KEY_HAS_SEEN_AUTO_CONFIRM_TIP, false);
+    }
+
+    public static void setHasSeenAutoConfirmTip(Context context, boolean seen) {
+        getPrefs(context).edit().putBoolean(KEY_HAS_SEEN_AUTO_CONFIRM_TIP, seen).apply();
     }
 
     public static boolean isWaterHoldToSettleEnabled(Context context) {
