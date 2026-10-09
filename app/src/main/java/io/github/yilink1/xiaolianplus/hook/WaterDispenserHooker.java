@@ -30,6 +30,7 @@ public class WaterDispenserHooker {
     private static final String TAG = XiaoLianModule.TAG;
     private final XiaoLianModule mModule;
     private String mScriptContent = null;
+    private String mDrinkWaterScriptContent = null;
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
     private final Set<Object> mInjectedWebViews = Collections.newSetFromMap(new WeakHashMap<>());
 
@@ -46,12 +47,24 @@ public class WaterDispenserHooker {
     }
 
     private void loadScript() {
+        mScriptContent = loadAssetFile("assets/water_dispenser.js");
+        mDrinkWaterScriptContent = loadAssetFile("assets/drink_water.js");
+
+        if (mScriptContent == null) {
+            mModule.log(Log.ERROR, TAG, "water_dispenser.js could not be loaded from any source!");
+        }
+        if (mDrinkWaterScriptContent == null) {
+            mModule.log(Log.ERROR, TAG, "drink_water.js could not be loaded from any source!");
+        }
+    }
+
+    private String loadAssetFile(String assetPath) {
         // 尝试 1：类加载器资源流
-        try (InputStream is = getClass().getClassLoader().getResourceAsStream("assets/water_dispenser.js")) {
+        try (InputStream is = getClass().getClassLoader().getResourceAsStream(assetPath)) {
             if (is != null) {
-                mScriptContent = readStream(is);
-                mModule.log(Log.INFO, TAG, "Water dispenser JS loaded from classloader (" + mScriptContent.length() + " chars)");
-                return;
+                String content = readStream(is);
+                mModule.log(Log.INFO, TAG, assetPath + " loaded from classloader (" + content.length() + " chars)");
+                return content;
             }
         } catch (Throwable ignored) {
         }
@@ -61,23 +74,20 @@ public class WaterDispenserHooker {
             android.content.pm.ApplicationInfo appInfo = mModule.getModuleApplicationInfo();
             if (appInfo != null && appInfo.sourceDir != null) {
                 try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(appInfo.sourceDir)) {
-                    java.util.zip.ZipEntry entry = zip.getEntry("assets/water_dispenser.js");
+                    java.util.zip.ZipEntry entry = zip.getEntry(assetPath);
                     if (entry != null) {
                         try (InputStream is = zip.getInputStream(entry)) {
-                            mScriptContent = readStream(is);
-                            mModule.log(Log.INFO, TAG, "Water dispenser JS loaded from module APK zip (" + mScriptContent.length() + " chars)");
-                            return;
+                            String content = readStream(is);
+                            mModule.log(Log.INFO, TAG, assetPath + " loaded from module APK zip (" + content.length() + " chars)");
+                            return content;
                         }
                     }
                 }
             }
         } catch (Throwable t) {
-            mModule.log(Log.WARN, TAG, "Failed to read JS from module APK zip", t);
+            mModule.log(Log.WARN, TAG, "Failed to read " + assetPath + " from module APK zip", t);
         }
-
-        if (mScriptContent == null) {
-            mModule.log(Log.ERROR, TAG, "water_dispenser.js could not be loaded from any source!");
-        }
+        return null;
     }
 
     private String readStream(InputStream is) throws Exception {
@@ -421,16 +431,64 @@ public class WaterDispenserHooker {
     }
 
     /**
-     * 4. 阿里 Nebula APWebView 为抽象接口，禁止直接 Hook 避免抛出 Cannot hook abstract methods。
-     * 注入已由 scheduleViewTreeScan 阶梯扫描与通用 WebView 容器完整兜底。
+     * 4. Hook 阿里 mPaaS / UC / 原生 WebView 挂载到窗口事件 (onAttachedToWindow)
+     * 解决单 Activity 多 WebView 页面栈架构下，新打开页面（如打水页）时动态 addView 漏注入问题。
      */
     private void hookNebulaWebView(ClassLoader classLoader) {
+        if (mHookNebulaDone) return;
+        String[] webViewClasses = {
+            "com.mpaas.mriver.engine.android.AndroidWebView$WebViewEx",
+            "com.mpaas.mriver.engine.android.AndroidWebViewDelegateView",
+            "com.uc.webview.export.WebView",
+            "android.webkit.WebView"
+        };
+
+        for (String clsName : webViewClasses) {
+            try {
+                Class<?> clazz = classLoader.loadClass(clsName);
+                Method onAttached = findMethod(clazz, "onAttachedToWindow", 0);
+                if (onAttached != null) {
+                    mModule.hook(onAttached)
+                        .setId("hook_webview_attached_" + Math.abs(clsName.hashCode()))
+                        .setPriority(XposedInterface.PRIORITY_DEFAULT)
+                        .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .intercept(chain -> {
+                            Object res = chain.proceed();
+                            Object thisObj = chain.getThisObject();
+                            if (thisObj instanceof View) {
+                                scheduleWebViewDebouncedInject((View) thisObj);
+                            }
+                            return res;
+                        });
+                    mModule.log(Log.INFO, TAG, "Hooked onAttachedToWindow on " + clsName);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
         mHookNebulaDone = true;
     }
 
+    private final Set<Integer> mScheduledWebViewIds = Collections.synchronizedSet(new java.util.HashSet<>());
+
     /**
-     * 统一通用注入方法，自动适配系统原生 WebView、UC WebView 及 APWebView
+     * 对新挂载的 WebView 执行防抖阶梯注入（避免重复触发死循环阶梯注入）
      */
+    public void scheduleWebViewDebouncedInject(View view) {
+        if (view == null) return;
+        int identity = System.identityHashCode(view);
+        if (!mScheduledWebViewIds.add(identity)) {
+            return; // 已经为该实例调度过阶梯注入，防止重复开启多组定时器
+        }
+
+        mModule.log(Log.INFO, TAG, "New WebView attached to window, scheduling debounced inject: " + view.getClass().getName());
+        long[] delays = { 50, 200, 600, 1500 };
+        for (long delay : delays) {
+            mMainHandler.postDelayed(() -> {
+                if (!view.isAttachedToWindow()) return;
+                inject(view);
+            }, delay);
+        }
+    }
     public void inject(Object webView) {
         if (webView == null || mScriptContent == null || mScriptContent.isEmpty()) {
             return;
@@ -459,7 +517,23 @@ public class WaterDispenserHooker {
                 boolean holdToSettle = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterHoldToSettleEnabled(targetCtx);
                 boolean desensitize = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterDesensitizeEnabled(targetCtx);
                 boolean defaultAllFav = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterDefaultAllFavEnabled(targetCtx);
-                String scriptToRun = "window.__XL_CONFIG__ = { autoConfirm: " + autoConfirm + ", holdToSettle: " + holdToSettle + ", desensitize: " + desensitize + ", defaultAllFav: " + defaultAllFav + " };\n" + mScriptContent;
+                String settleMode = holdToSettle ? "hold" : "off";
+
+                StringBuilder sb = new StringBuilder();
+                sb.append("window.XL_AUTO_CONFIRM = ").append(autoConfirm).append(";\n");
+                sb.append("window.XL_SETTLE_MODE = '").append(settleMode).append("';\n");
+                sb.append("window.__XL_AUTO_CONFIRM__ = ").append(autoConfirm).append(";\n");
+                sb.append("window.__XL_SETTLE_MODE__ = '").append(settleMode).append("';\n");
+                sb.append("window.__XL_CONFIG__ = { autoConfirm: ").append(autoConfirm)
+                  .append(", holdToSettle: ").append(holdToSettle)
+                  .append(", desensitize: ").append(desensitize)
+                  .append(", defaultAllFav: ").append(defaultAllFav)
+                  .append(" };\n");
+                sb.append(mScriptContent != null ? mScriptContent : "").append("\n");
+                if (mDrinkWaterScriptContent != null && !mDrinkWaterScriptContent.isEmpty()) {
+                    sb.append(mDrinkWaterScriptContent).append("\n");
+                }
+                String scriptToRun = sb.toString();
 
                 boolean evaluated = false;
 

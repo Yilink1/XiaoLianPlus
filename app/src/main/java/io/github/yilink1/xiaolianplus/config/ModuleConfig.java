@@ -48,11 +48,10 @@ public class ModuleConfig {
     }
 
     /**
-     * 实验性/未就绪功能特性总控（脱敏、跳过确认、长按0.5秒结算）
-     * 发布前置为 false：完全隐藏弹窗开关，并阻断后台功能生效；
-     * 正式版发布后，改回 true 即可一键恢复，继续调试完善。
+     * 实验性/打水页面体验优化功能特性总控（脱敏、跳过确认、长按0.5秒结算）
+     * 置为 true：展示弹窗开关，并允许后台功能生效。
      */
-    public static final boolean EXPERIMENTAL_FEATURES_ENABLED = false;
+    public static final boolean EXPERIMENTAL_FEATURES_ENABLED = true;
 
     public static final String KEY_WATER_AUTO_CONFIRM = "key_water_auto_confirm";
     public static final String KEY_WATER_HOLD_TO_SETTLE = "key_water_hold_to_settle";

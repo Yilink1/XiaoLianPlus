@@ -94,6 +94,25 @@
     st.id = 'xl-custom-style';
     st.textContent = `
       .xl-aliased { font-size: 0 !important; }
+      .xl-aliased .xl-alias {
+        font-size: 0.32rem !important;
+        line-height: 19.66px !important;
+        font-weight: 500 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+      }
+      .xl-alias-main {
+        font-size: 0.32rem !important;
+        line-height: 19.66px !important;
+        font-weight: 500 !important;
+      }
+      .xl-alias-raw {
+        font-size: 0.24rem !important;
+        color: #8c8c8c !important;
+        font-weight: normal !important;
+        margin-left: 0.12rem !important;
+        line-height: 19.66px !important;
+      }
 
       /* 扫码悬浮盾：强制提升至最高图层，永远浮在最上层，绝不被卡片或星标盖过 */
       .scan-tab {
@@ -185,8 +204,9 @@
       body.xl-in-fav-mode .header-title .building::before,
       body.xl-in-fav-mode .building::before {
         content: "★ 全部收藏" !important;
-        font-size: 18px !important;
-        font-weight: 700 !important;
+        font-size: 0.4rem !important;
+        line-height: 24.58px !important;
+        font-weight: bold !important;
         color: #ffffff !important;
         letter-spacing: 0.5px !important;
         display: inline-block !important;
@@ -219,24 +239,20 @@
       if (t.classList.contains('xl-aliased')) t.classList.remove('xl-aliased');
       return;
     }
-    if (!t.dataset.xlFs && !t.classList.contains('xl-aliased')) {
-      t.dataset.xlFs = String(parseFloat(getComputedStyle(t).fontSize) || 14);
-    }
-    const fs = parseFloat(t.dataset.xlFs) || 14;
-    const sig = [data.name || '', data.color || '', data.showRaw ? 1 : 0, fs, raw].join('|');
+    const sig = [data.name || '', data.color || '', data.showRaw ? 1 : 0, raw].join('|');
     if (!span) { span = document.createElement('span'); span.className = 'xl-alias'; t.appendChild(span); }
     if (span.dataset.sig !== sig) {
       span.dataset.sig = sig;
       span.textContent = '';
       const main = document.createElement('span');
+      main.className = 'xl-alias-main';
       main.textContent = hasAlias ? data.name : raw;
-      main.style.fontSize = fs + 'px';
       if (hasColor) { main.style.color = data.color; main.style.fontWeight = '600'; }
       span.appendChild(main);
       if (hasAlias && data.showRaw) {
         const r = document.createElement('span');
+        r.className = 'xl-alias-raw';
         r.textContent = '(' + raw + ')';
-        r.style.cssText = 'font-size:11px;color:#8c8c8c;font-weight:normal;margin-left:6px;';
         span.appendChild(r);
       }
     }
@@ -792,233 +808,4 @@
   }
   setInterval(pass, 1500);
   pass();
-})();
-
-
-// ============================================================
-// 打水页面 (pages/drinkwater/drinkwater) 体验优化全量实现
-// 包含：自动跳过二次确认弹窗、长按 0.5s 平滑结算找零、页面敏感数据脱敏
-// ============================================================
-(function initDrinkWaterOptimizer() {
-  if (window.__XL_DW_OPTIMIZER_INIT__) return;
-  window.__XL_DW_OPTIMIZER_INIT__ = true;
-
-  const config = window.__XL_CONFIG__ || { autoConfirm: true, holdToSettle: true, desensitize: false };
-  const HOLD_DURATION = 500; // 长按触发阈值 (ms)
-  let pressTimer = null;
-  let isTriggered = false;
-
-  // 1. 全局 CSS 注入：根据开关独立生效对应样式
-  const styleId = 'xl-drinkwater-style';
-  let style = document.getElementById(styleId);
-  if (!style) {
-    style = document.createElement('style');
-    style.id = styleId;
-    const container = document.head || document.documentElement || document.body;
-    if (container) container.appendChild(style);
-  }
-
-  let cssRules = '';
-  if (config.autoConfirm) {
-    cssRules += `
-      /* 关键修复：绝不能用 display: none 彻底销毁布局尺寸！改用 opacity: 0 保持物理尺寸可用 */
-      .l-message-box, .l-message-mask, [class*="message-container"] {
-        opacity: 0 !important;
-        pointer-events: none !important;
-      }
-      .l-message-box .l-message-ok, .l-message-box [data-clickable="true"] {
-        pointer-events: auto !important;
-      }
-    `;
-  }
-  if (config.holdToSettle) {
-    cssRules += `
-      /* 隐藏原版滑块球体，保持手势容器尺寸 */
-      .sliders movable-area {
-        opacity: 0 !important;
-      }
-      /* 改造为胶囊长按按钮 */
-      .sliders {
-        position: relative !important;
-        cursor: pointer !important;
-        user-select: none !important;
-        -webkit-user-select: none !important;
-        overflow: hidden !important;
-      }
-      /* 平滑填充进度条 */
-      .hold-progress-bar {
-        position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        width: 0%;
-        background: #1082FF;
-        transition: width ${HOLD_DURATION}ms linear;
-        z-index: 11;
-        pointer-events: none;
-      }
-      .sliders.is-pressing .hold-progress-bar {
-        width: 100%;
-      }
-      .sliders .tips {
-        z-index: 20 !important;
-      }
-      .sliders.is-pressing .tips text, .sliders.is-pressing .tips {
-        color: #FFFFFF !important;
-      }
-    `;
-  }
-  style.textContent = cssRules;
-
-  // 2. 自动点击“确认开始”弹窗
-  function handleAutoConfirm() {
-    if (!config.autoConfirm) return;
-    const btns = Array.from(document.querySelectorAll('.l-message-ok, [data-clickable="true"]'));
-    const okBtn = btns.find(el => el.innerText && el.innerText.trim() === '确认');
-    if (!okBtn) return;
-
-    const rect = okBtn.getBoundingClientRect();
-    const x = rect.left + (rect.width > 0 ? rect.width / 2 : 100);
-    const y = rect.top + (rect.height > 0 ? rect.height / 2 : 100);
-    try {
-      const touch = new Touch({ identifier: Date.now() % 100000, target: okBtn, clientX: x, clientY: y, pageX: x, pageY: y });
-      ['touchstart', 'touchend'].forEach(type => {
-        okBtn.dispatchEvent(new TouchEvent(type, {
-          bubbles: true,
-          cancelable: true,
-          touches: type === 'touchend' ? [] : [touch],
-          targetTouches: type === 'touchend' ? [] : [touch],
-          changedTouches: [touch]
-        }));
-      });
-    } catch (ignored) {}
-    try { okBtn.click(); } catch (e) {}
-  }
-
-  // 3. 动态计算宽度并平滑推满滑块
-  function smoothSlideAndSettle(track) {
-    const rect = track.getBoundingClientRect();
-    const startX = rect.left + rect.width / 2;
-    const startY = rect.top + rect.height / 2;
-    
-    // 关键修复：动态获取外层容器宽度，覆盖 1080p/1.5K/2K 全部分辨率
-    const container = track.closest('.sliders') || document.querySelector('.sliders');
-    const containerW = container ? container.getBoundingClientRect().width : 320;
-    const dragDistance = Math.max(280, containerW - 40);
-    const targetX = startX + dragDistance;
-    const steps = 6;
-    const stepDist = (targetX - startX) / steps;
-
-    function makeTouch(x) {
-      return new Touch({ identifier: 999, target: track, clientX: x, clientY: startY, pageX: x, pageY: startY });
-    }
-
-    try {
-      track.dispatchEvent(new TouchEvent('touchstart', {
-        bubbles: true,
-        cancelable: true,
-        touches: [makeTouch(startX)],
-        targetTouches: [makeTouch(startX)],
-        changedTouches: [makeTouch(startX)]
-      }));
-
-      let currentX = startX;
-      let count = 0;
-      const timer = setInterval(() => {
-        count++;
-        currentX += stepDist;
-        track.dispatchEvent(new TouchEvent('touchmove', {
-          bubbles: true,
-          cancelable: true,
-          touches: [makeTouch(currentX)],
-          targetTouches: [makeTouch(currentX)],
-          changedTouches: [makeTouch(currentX)]
-        }));
-
-        if (count >= steps) {
-          clearInterval(timer);
-          setTimeout(() => {
-            track.dispatchEvent(new TouchEvent('touchend', {
-              bubbles: true,
-              cancelable: true,
-              touches: [],
-              targetTouches: [],
-              changedTouches: [makeTouch(targetX)]
-            }));
-          }, 50);
-        }
-      }, 16);
-    } catch (ignored) {}
-  }
-
-  // 4. 接管滑块长按事件
-  function setupHoldToSettle() {
-    if (!config.holdToSettle) return;
-    const container = document.querySelector('.sliders');
-    if (!container || container.dataset.bindDone) return;
-    container.dataset.bindDone = 'true';
-
-    let bar = container.querySelector('.hold-progress-bar');
-    if (!bar) {
-      bar = document.createElement('div');
-      bar.className = 'hold-progress-bar';
-      container.appendChild(bar);
-    }
-
-    const tips = container.querySelector('.tips text') || container.querySelector('.tips');
-    if (tips) tips.innerText = '按住 0.5 秒 结算找零';
-
-    function startPress(e) {
-      if (isTriggered) return;
-      if (e && e.cancelable) e.preventDefault();
-      container.classList.add('is-pressing');
-
-      pressTimer = setTimeout(() => {
-        isTriggered = true;
-        container.classList.remove('is-pressing');
-        if (tips) tips.innerText = '正在结算中...';
-
-        const track = document.querySelector('#track');
-        if (track) smoothSlideAndSettle(track);
-      }, HOLD_DURATION);
-    }
-
-    function cancelPress() {
-      if (isTriggered) return;
-      clearTimeout(pressTimer);
-      container.classList.remove('is-pressing');
-    }
-
-    container.addEventListener('touchstart', startPress, { passive: false });
-    container.addEventListener('touchend', cancelPress);
-    container.addEventListener('touchcancel', cancelPress);
-    container.addEventListener('mousedown', startPress);
-    container.addEventListener('mouseup', cancelPress);
-  }
-
-  // 5. 敏感文本源头脱敏
-  function desensitizeUI() {
-    if (!config.desensitize) return;
-    const buildingEl = document.querySelector('.header-title .building, .a-view.building');
-    if (buildingEl && !buildingEl.innerText.includes('虚拟演示')) {
-      buildingEl.innerText = '虚拟演示设备 01';
-    }
-  }
-
-  function runDrinkWater() {
-    handleAutoConfirm();
-    setupHoldToSettle();
-    desensitizeUI();
-  }
-
-  runDrinkWater();
-  let dwTimer = null;
-  const dwObserver = new MutationObserver(() => {
-    clearTimeout(dwTimer);
-    dwTimer = setTimeout(runDrinkWater, 80);
-  });
-  const target = document.body || document.documentElement;
-  if (target) {
-    dwObserver.observe(target, { childList: true, subtree: true });
-  }
 })();
