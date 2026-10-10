@@ -174,15 +174,18 @@ public class SettingsDialog {
                     (buttonView, isChecked) -> ModuleConfig.setWaterHoldToSettleEnabled(context, isChecked));
         }
 
-        View rowWebDebug = addSwitchItem(context, root, "网页调试模式", null,
-                ModuleConfig.isWebviewDebugEnabled(context),
-                (buttonView, isChecked) -> ModuleConfig.setWebviewDebugEnabled(context, isChecked));
+        if (BuildConfig.DEBUG) {
+            View rowWebDebug = addSwitchItem(context, root, "网页调试模式", null,
+                    ModuleConfig.isWebviewDebugEnabled(context),
+                    (buttonView, isChecked) -> ModuleConfig.setWebviewDebugEnabled(context, isChecked));
 
-        if (!BuildConfig.DEBUG) {
-            rowWebDebug.setVisibility(View.GONE);
-        } else {
+            View rowDebugHud = addSwitchItem(context, root, "饮水机调试条", "在饮水机页面左下角显示滚动日志",
+                    ModuleConfig.isDebugHudEnabled(context),
+                    (buttonView, isChecked) -> ModuleConfig.setDebugHudEnabled(context, isChecked));
+
             boolean isUnlocked = ModuleConfig.isDevOptionsUnlocked(context);
             rowWebDebug.setVisibility(isUnlocked ? View.VISIBLE : View.GONE);
+            rowDebugHud.setVisibility(isUnlocked ? View.VISIBLE : View.GONE);
             if (!isUnlocked) {
                 final int[] titleClicks = {0};
                 tvTitle.setOnClickListener(v -> {
@@ -190,6 +193,7 @@ public class SettingsDialog {
                     if (titleClicks[0] >= 7) {
                         ModuleConfig.setDevOptionsUnlocked(context, true);
                         rowWebDebug.setVisibility(View.VISIBLE);
+                        rowDebugHud.setVisibility(View.VISIBLE);
                         tvTitle.setOnClickListener(null);
                     }
                 });

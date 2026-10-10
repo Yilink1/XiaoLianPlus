@@ -11,6 +11,7 @@ public class ModuleConfig {
     public static final String KEY_WATER_DISPENSER = "key_water_dispenser";
     public static final String KEY_LOADING_PASS_THROUGH = "key_loading_pass_through";
     public static final String KEY_WEBVIEW_DEBUG = "key_webview_debug";
+    public static final String KEY_DEBUG_HUD = "key_debug_hud";
     public static final String KEY_DIRECT_LAUNCH_MODE = "key_direct_launch_mode";
 
     public static final int DIRECT_LAUNCH_HOME = 0;       // 默认首页
@@ -100,6 +101,17 @@ public class ModuleConfig {
 
     public static void setWebviewDebugEnabled(Context context, boolean enabled) {
         getPrefs(context).edit().putBoolean(KEY_WEBVIEW_DEBUG, enabled).apply();
+    }
+
+    public static boolean isDebugHudEnabled(Context context) {
+        if (!io.github.yilink1.xiaolianplus.BuildConfig.DEBUG) {
+            return false;
+        }
+        return getPrefs(context).getBoolean(KEY_DEBUG_HUD, false);
+    }
+
+    public static void setDebugHudEnabled(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(KEY_DEBUG_HUD, enabled).apply();
     }
 
     public static int getDirectLaunchMode(Context context) {

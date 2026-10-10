@@ -22,6 +22,13 @@
 
   console.log('[XiaoLianPlus] Water dispenser v2.6.0 loaded.');
 
+  // 调试条开关。约定：Java 侧把模块设置里的「调试条」开关写进 window.__XL_CONFIG__.debugHud（布尔），脚本注入前设置好即可。
+  // FORCE_DEBUG 仅在排查期强制开启，排查结束改成 false，之后完全由模块开关控制。
+  const FORCE_DEBUG = false;
+  const XL_DEBUG = FORCE_DEBUG || !!(window.__XL_CONFIG__ && window.__XL_CONFIG__.debugHud);
+  let xlLog = function () {};
+  let xlOnToggle = function () {};
+
   // ───────── 1. 网关级通信拦截守卫 (100% 物理绝缘穿透) ─────────
   function hookBridge() {
     if (window.__xl_bridge_hooked) return;
@@ -31,6 +38,19 @@
         if (func === 'postMessage' && param && param.data) {
           try {
             const str = typeof param.data === 'string' ? param.data : JSON.stringify(param.data);
+            if (XL_DEBUG) {
+              const m = str.match(/"a"\s*:\s*\[\s*"([^"]+)"/);
+              xlLog('bridge> ' + (m ? m[1] : str.slice(0, 40)));
+            }
+            if (str.includes('"toSelectBuilding"')) {
+              // 补发后 1.2 秒内，渲染层迟到的原始消息丢弃，避免重复打开选楼页
+              if (!window.__xl_replaying && Date.now() - (window.__xl_replay_time || 0) < 1200) {
+                xlLog('drop late toSelectBuilding');
+                return;
+              }
+              window.__xl_sb_time = Date.now();
+              try { window.__xl_sb_param = JSON.parse(JSON.stringify(param)); } catch (e) {}
+            }
             if (str.includes('"selectDevice"')) {
               const timeDiff = Date.now() - (window.__xl_last_star_tap_time || 0);
               if (timeDiff < 800) {
@@ -191,30 +211,24 @@
         box-sizing: border-box;
       }
 
-      /* 全收藏模式：左上角楼栋名纯 CSS 替换（0 新增节点，无倒三角，禁用点击防误触） */
-      body.xl-in-fav-mode .header-title .building,
-      body.xl-in-fav-mode .building,
-      body.xl-in-fav-mode .container-head_box_location {
-        font-size: 0 !important;
-        pointer-events: none !important;
+      /* 全收藏模式：左上角楼栋名「覆盖层」方案
+         原生 .building 节点只做 opacity:0（不改 pointer-events / visibility / font-size / display），
+         由独立的悬浮层显示「★ 全部收藏」并吞掉点击。退出时仅隐藏悬浮层 + 恢复 opacity，
+         原生节点的命中状态全程未被改动，因此能立即点击。 */
+      body.xl-in-fav-mode .xl-building-hidden {
+        opacity: 0 !important;
       }
-      /* 使用 visibility: hidden 替代 display: none，确保物理碰撞箱在线，退出全收藏时点击瞬间响应绝不吞击 */
-      body.xl-in-fav-mode .header-title .building > *,
-      body.xl-in-fav-mode .building > *,
-      body.xl-in-fav-mode .container-head_box_location > * {
-        visibility: hidden !important;
-      }
-      body.xl-in-fav-mode .header-title .building::before,
-      body.xl-in-fav-mode .building::before,
-      body.xl-in-fav-mode .container-head_box_location::before {
-        content: "★ 全部收藏" !important;
-        font-size: 0.4rem !important;
-        line-height: 24.58px !important;
-        font-weight: bold !important;
-        color: #ffffff !important;
-        letter-spacing: 0.5px !important;
-        display: inline-block !important;
-        visibility: visible !important;
+      #xl-fav-title-cover {
+        position: fixed;
+        z-index: 100;
+        display: none;
+        align-items: center;
+        color: #ffffff;
+        font-weight: bold;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+        pointer-events: auto;
+        -webkit-tap-highlight-color: transparent;
       }
     `;
     (document.head || document.documentElement).appendChild(st);
@@ -499,6 +513,100 @@
     ensureBottomSpacer(favView);
   }
 
+  // ───────── 9.5 左上角楼栋名覆盖层（全收藏模式显示「★ 全部收藏」，不可点击） ─────────
+  function updateBuildingCover() {
+    const building = document.querySelector('.header-title .building')
+      || document.querySelector('.building')
+      || document.querySelector('.container-head_box_location');
+    let cover = document.getElementById('xl-fav-title-cover');
+
+    // 非全收藏模式：恢复原生节点，隐藏覆盖层
+    if (!isFavMode || !building) {
+      document.querySelectorAll('.xl-building-hidden').forEach(n => n.classList.remove('xl-building-hidden'));
+      if (cover) cover.style.display = 'none';
+      return;
+    }
+
+    building.classList.add('xl-building-hidden');
+
+    if (!cover) {
+      cover = document.createElement('div');
+      cover.id = 'xl-fav-title-cover';
+      cover.textContent = '★ 全部收藏';
+      const swallow = (e) => {
+        e.stopPropagation();
+        if (e.cancelable) e.preventDefault();
+      };
+      ['click', 'touchstart', 'touchend'].forEach(t => cover.addEventListener(t, swallow, { capture: true, passive: false }));
+      document.body.appendChild(cover);
+    }
+
+    const rect = building.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) {
+      cover.style.display = 'none';
+      return;
+    }
+    const cs = getComputedStyle(building);
+    cover.style.left = rect.left + 'px';
+    cover.style.top = rect.top + 'px';
+    cover.style.height = rect.height + 'px';
+    cover.style.minWidth = rect.width + 'px';
+    cover.style.fontSize = '0.4rem';
+    cover.style.lineHeight = rect.height + 'px';
+    cover.style.fontFamily = cs.fontFamily;
+    cover.style.display = 'flex';
+  }
+
+  // ───────── 9.6 楼栋名点击兜底 ─────────
+  // 实测现象：点「✕ 全部水机」后约 1 秒内点楼栋名，页面能收到 touchstart/touchend/click，
+  // 但渲染层不再向逻辑层发 toSelectBuilding（正常点击是 click 后 1ms 内就发）。
+  // 根因在小程序渲染层，脚本侧无法直接修；这里检测「点击落在楼栋名上、200ms 内却没有 toSelectBuilding 发出」，
+  // 用最近一次真实消息（没有则按 jumpToDrinkWater 同款格式构造）补发一次。
+  function getBuildingEl() {
+    return document.querySelector('.header-title .building')
+      || document.querySelector('.building')
+      || document.querySelector('.container-head_box_location');
+  }
+
+  function replayToSelectBuilding() {
+    if (!window.AlipayJSBridge) return;
+    let param = null;
+    try { param = window.__xl_sb_param ? JSON.parse(JSON.stringify(window.__xl_sb_param)) : null; } catch (e) {}
+    if (!param) {
+      param = {
+        type: 'messagePort',
+        msgPortId: 2,
+        data: JSON.stringify({
+          data: {
+            c: 'page',
+            m: 'onRenderEvent',
+            a: ['toSelectBuilding', { type: 'tap', target: { dataset: {} }, currentTarget: { dataset: {} } }]
+          }
+        })
+      };
+    }
+    window.__xl_replay_time = Date.now();
+    window.__xl_replaying = true;
+    try { window.AlipayJSBridge.call('postMessage', param); } finally { window.__xl_replaying = false; }
+    xlLog('replay toSelectBuilding');
+  }
+
+  document.addEventListener('click', (e) => {
+    if (isFavMode) return; // 全收藏模式下标题是不可点击的覆盖层
+    const b = getBuildingEl();
+    if (!b) return;
+    const r = b.getBoundingClientRect();
+    const pad = 12;
+    const inside = (e.target && e.target.closest && e.target.closest('.building'))
+      || (e.clientX >= r.left - pad && e.clientX <= r.right + pad && e.clientY >= r.top - pad && e.clientY <= r.bottom + pad);
+    if (!inside) return;
+    const clickedAt = Date.now();
+    setTimeout(() => {
+      if ((window.__xl_sb_time || 0) >= clickedAt) return; // 渲染层已正常发出
+      replayToSelectBuilding();
+    }, 200);
+  }, true);
+
   // ───────── 10. 顶部【★ 全部收藏】胶囊按钮 ─────────
   function updateTopFavButton() {
     const pwdBtn = document.querySelector('.l-button.setPassBtn') || document.querySelector('.setPassBtn') || document.querySelector('.set_password');
@@ -517,6 +625,7 @@
         e.stopPropagation();
         isFavMode = !isFavMode;
         pass();
+        xlOnToggle();
       });
     }
 
@@ -766,6 +875,7 @@
   function pass() {
     if (passing) return;
     passing = true;
+    const passStart = XL_DEBUG ? performance.now() : 0;
     try {
       ensureStyle();
       initSheet();
@@ -823,14 +933,22 @@
         }
 
         updateTopFavButton();
+        updateBuildingCover();
       } else {
         const topBtn = document.getElementById('xl-top-fav-btn');
         if (topBtn) topBtn.style.display = 'none';
+        const cv = document.getElementById('xl-fav-title-cover');
+        if (cv) cv.style.display = 'none';
+        document.querySelectorAll('.xl-building-hidden').forEach(n => n.classList.remove('xl-building-hidden'));
       }
     } catch (e) {
       console.warn('[XiaoLianPlus] pass error', e);
     } finally {
       passing = false;
+      if (XL_DEBUG) {
+        const cost = performance.now() - passStart;
+        if (cost > 20) xlLog('pass ' + Math.round(cost) + 'ms fav=' + isFavMode);
+      }
     }
   }
   window.__xl_refresh__ = pass;
@@ -849,7 +967,7 @@
     // 忽略我们自己注入的根节点变动
     const isOnlyOurs = muts.every(m => {
       const t = m.target;
-      return t && t.closest && t.closest('#xl-custom-style,#xl-scroll-bottom-spacer,#xl-top-fav-btn,#modern-sheet-root,#xl-fav-native-view');
+      return t && t.closest && t.closest('#xl-custom-style,#xl-scroll-bottom-spacer,#xl-top-fav-btn,#modern-sheet-root,#xl-fav-native-view,#xl-fav-title-cover,#xl-debug-hud');
     });
     if (!isOnlyOurs) {
       fastPass();
@@ -860,6 +978,61 @@
   if (rootTarget) {
     observer.observe(rootTarget, { childList: true, subtree: true });
   }
+  // ───────── 13. 调试条（屏幕左下角；pointer-events:none，不影响任何点击） ─────────
+  if (XL_DEBUG) {
+    const t0 = Date.now();
+    const rows = [];
+    let hud = null;
+    const stamp = () => ((Date.now() - t0) / 1000).toFixed(2);
+    const desc = (el) => {
+      if (!el || !el.tagName) return String(el);
+      let s = el.tagName.toLowerCase();
+      if (el.id) s += '#' + el.id;
+      const cls = el.classList ? Array.from(el.classList).slice(0, 2).join('.') : '';
+      return cls ? s + '.' + cls : s;
+    };
+    xlLog = function (msg) {
+      rows.push(stamp() + ' ' + msg);
+      if (rows.length > 16) rows.shift();
+      if (!hud || !hud.isConnected) {
+        hud = document.createElement('div');
+        hud.id = 'xl-debug-hud';
+        hud.style.cssText = 'position:fixed;left:0;bottom:0;z-index:2147483647;max-width:100vw;'
+          + 'background:rgba(0,0,0,.72);color:#9f9;font:10px/1.35 monospace;padding:3px 5px;'
+          + 'pointer-events:none;white-space:pre-wrap;word-break:break-all;';
+        (document.body || document.documentElement).appendChild(hud);
+      }
+      hud.textContent = rows.join('\n');
+    };
+    const findBuilding = () => document.querySelector('.header-title .building')
+      || document.querySelector('.building')
+      || document.querySelector('.container-head_box_location');
+    // 探针：楼栋名中心点此刻命中的是谁、pointer-events 与 opacity 是什么
+    const probe = (tag) => {
+      const b = findBuilding();
+      if (!b) { xlLog(tag + ' building=null'); return; }
+      const r = b.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      const cs = getComputedStyle(b);
+      xlLog(tag + ' hit=' + desc(hit) + ' ok=' + (hit === b || b.contains(hit)) + ' pe=' + cs.pointerEvents + ' op=' + cs.opacity);
+    };
+    xlOnToggle = function () {
+      xlLog('fav mode -> ' + isFavMode);
+      [0, 150, 400, 700, 1000, 1500].forEach((d) => setTimeout(() => probe((isFavMode ? 'in' : 'out') + '+' + d), d));
+    };
+    ['touchstart', 'touchend', 'click'].forEach((type) => {
+      document.addEventListener(type, (e) => {
+        const p = (e.changedTouches && e.changedTouches[0]) || e;
+        xlLog(type + ' ' + desc(e.target) + (type === 'touchstart' ? ' @' + Math.round(p.clientX) + ',' + Math.round(p.clientY) : ''));
+      }, true);
+    });
+    try {
+      new PerformanceObserver((l) => l.getEntries().forEach((e) => xlLog('longtask ' + Math.round(e.duration) + 'ms')))
+        .observe({ entryTypes: ['longtask'] });
+    } catch (e) {}
+    xlLog('debug on');
+  }
+
   setInterval(pass, 1500);
   pass();
 })();
