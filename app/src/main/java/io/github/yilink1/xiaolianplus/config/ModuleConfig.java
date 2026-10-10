@@ -60,7 +60,7 @@ public class ModuleConfig {
 
     public static boolean isWaterAutoConfirmEnabled(Context context) {
         if (!EXPERIMENTAL_FEATURES_ENABLED) return false;
-        return getPrefs(context).getBoolean(KEY_WATER_AUTO_CONFIRM, true);
+        return getPrefs(context).getBoolean(KEY_WATER_AUTO_CONFIRM, false);
     }
 
     public static void setWaterAutoConfirmEnabled(Context context, boolean enabled) {
@@ -77,11 +77,50 @@ public class ModuleConfig {
 
     public static boolean isWaterHoldToSettleEnabled(Context context) {
         if (!EXPERIMENTAL_FEATURES_ENABLED) return false;
-        return getPrefs(context).getBoolean(KEY_WATER_HOLD_TO_SETTLE, true);
+        return getPrefs(context).getBoolean(KEY_WATER_HOLD_TO_SETTLE, false);
     }
 
     public static void setWaterHoldToSettleEnabled(Context context, boolean enabled) {
         getPrefs(context).edit().putBoolean(KEY_WATER_HOLD_TO_SETTLE, enabled).apply();
+    }
+
+    public static final String KEY_WATER_HOLD_THEME = "key_water_hold_theme";
+    public static final String HOLD_THEME_CLASSIC = "classic";
+    public static final String HOLD_THEME_GLASS = "glass";
+    public static final String HOLD_THEME_LOOP = "loop";
+    public static final String HOLD_THEME_RATCHET = "ratchet";
+    // 兼容历史版本
+    public static final String HOLD_THEME_WATER = "loop";
+    public static final String HOLD_THEME_RETRO = "ratchet";
+
+    public static String getWaterHoldTheme(Context context) {
+        return getPrefs(context).getString(KEY_WATER_HOLD_THEME, HOLD_THEME_CLASSIC);
+    }
+
+    public static void setWaterHoldTheme(Context context, String theme) {
+        getPrefs(context).edit().putString(KEY_WATER_HOLD_THEME, theme).apply();
+    }
+
+    public static final String KEY_WATER_HOLD_THEME_NAME = "key_water_hold_theme_name";
+
+    public static String getWaterHoldThemeName(Context context) {
+        String theme = getWaterHoldTheme(context);
+        String name = getPrefs(context).getString(KEY_WATER_HOLD_THEME_NAME, null);
+        if (name == null || "水位".equals(name) || "霓虹".equals(name) || "水韵气泡".equals(name) || "复古街机".equals(name)) {
+            return getHoldThemeTitle(theme);
+        }
+        return name;
+    }
+
+    public static void setWaterHoldThemeName(Context context, String name) {
+        getPrefs(context).edit().putString(KEY_WATER_HOLD_THEME_NAME, name).apply();
+    }
+
+    public static String getHoldThemeTitle(String theme) {
+        if (HOLD_THEME_GLASS.equals(theme)) return "玻璃";
+        if (HOLD_THEME_LOOP.equals(theme) || "water".equals(theme) || "wave".equals(theme)) return "边界闭环";
+        if (HOLD_THEME_RATCHET.equals(theme) || "retro".equals(theme) || "neon".equals(theme) || "aurora".equals(theme)) return "棘轮咬合";
+        return "经典";
     }
 
     public static boolean isLoadingPassThroughEnabled(Context context) {

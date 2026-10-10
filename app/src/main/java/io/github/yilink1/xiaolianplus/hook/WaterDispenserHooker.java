@@ -517,6 +517,7 @@ public class WaterDispenserHooker {
                 boolean holdToSettle = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterHoldToSettleEnabled(targetCtx);
                 boolean defaultAllFav = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterDefaultAllFavEnabled(targetCtx);
                 boolean debugHud = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isDebugHudEnabled(targetCtx);
+                String holdTheme = targetCtx != null ? io.github.yilink1.xiaolianplus.config.ModuleConfig.getWaterHoldTheme(targetCtx) : "classic";
                 String settleMode = holdToSettle ? "hold" : "off";
 
                 StringBuilder sb = new StringBuilder();
@@ -524,10 +525,12 @@ public class WaterDispenserHooker {
                 sb.append("window.XL_SETTLE_MODE = '").append(settleMode).append("';\n");
                 sb.append("window.__XL_AUTO_CONFIRM__ = ").append(autoConfirm).append(";\n");
                 sb.append("window.__XL_SETTLE_MODE__ = '").append(settleMode).append("';\n");
+                sb.append("window.__XL_HOLD_THEME__ = '").append(holdTheme).append("';\n");
                 sb.append("window.__XL_CONFIG__ = { autoConfirm: ").append(autoConfirm)
                   .append(", holdToSettle: ").append(holdToSettle)
                   .append(", defaultAllFav: ").append(defaultAllFav)
                   .append(", debugHud: ").append(debugHud)
+                  .append(", holdTheme: '").append(holdTheme).append("'")
                   .append(" };\n");
                 sb.append(mScriptContent != null ? mScriptContent : "").append("\n");
                 if (mDrinkWaterScriptContent != null && !mDrinkWaterScriptContent.isEmpty()) {

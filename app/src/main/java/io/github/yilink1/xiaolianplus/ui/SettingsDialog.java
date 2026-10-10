@@ -14,11 +14,18 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.CompoundButton;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -123,65 +130,134 @@ public class SettingsDialog {
         // 分割线
         root.addView(createDivider(context));
 
+        // 临时草稿状态（点击底部「完成设置」时才统一持久化保存；返回/点外部退出则丢弃改动不保存）
+        final boolean[] draftSplashAdBlock = { ModuleConfig.isSplashAdBlockEnabled(context) };
+        final boolean[] draftLoadingPassThrough = { ModuleConfig.isLoadingPassThroughEnabled(context) };
+        final boolean[] draftIgnoreLowVersion = { ModuleConfig.isIgnoreLowVersionPrompt(context) };
+        final boolean[] draftWaterDispenser = { ModuleConfig.isWaterDispenserEnabled(context) };
+        final boolean[] draftWaterDefaultAllFav = { ModuleConfig.isWaterDefaultAllFavEnabled(context) };
+        final boolean[] draftWaterAutoConfirm = { ModuleConfig.isWaterAutoConfirmEnabled(context) };
+        final boolean[] draftWaterHoldToSettle = { ModuleConfig.isWaterHoldToSettleEnabled(context) };
+        final String[] draftHoldTheme = { ModuleConfig.getWaterHoldTheme(context) };
+        final String[] draftHoldThemeName = { ModuleConfig.getWaterHoldThemeName(context) };
+        final boolean[] draftWebviewDebug = { ModuleConfig.isWebviewDebugEnabled(context) };
+        final boolean[] draftDebugHud = { ModuleConfig.isDebugHudEnabled(context) };
+        final int[] draftDirectLaunchMode = { ModuleConfig.getDirectLaunchMode(context) };
+        final String[] draftSelectedDeviceName = { ModuleConfig.getSelectedDeviceName(context) };
+        final boolean[] draftHasSeenAutoConfirmTip = { ModuleConfig.hasSeenAutoConfirmTip(context) };
+
         // 2. 开关群
         addSectionHeader(context, root, "基础与通用");
 
         addSwitchItem(context, root, "跳过开屏广告", "打开应用时自动跳过启动页广告",
-                ModuleConfig.isSplashAdBlockEnabled(context),
-                (buttonView, isChecked) -> ModuleConfig.setSplashAdBlockEnabled(context, isChecked));
+                draftSplashAdBlock[0],
+                (buttonView, isChecked) -> draftSplashAdBlock[0] = isChecked);
 
         addSwitchItem(context, root, "加载中允许直接扫码", "页面正在加载列表时，依然可以直接点击右下角扫码",
-                ModuleConfig.isLoadingPassThroughEnabled(context),
-                (buttonView, isChecked) -> ModuleConfig.setLoadingPassThroughEnabled(context, isChecked));
+                draftLoadingPassThrough[0],
+                (buttonView, isChecked) -> draftLoadingPassThrough[0] = isChecked);
 
         if (isHostVersionLower(context, "1.5.7")) {
             addSwitchItem(context, root, "关闭低版本提示", "低于 1.5.7 版本不再提示",
-                    ModuleConfig.isIgnoreLowVersionPrompt(context),
-                    (buttonView, isChecked) -> ModuleConfig.setIgnoreLowVersionPrompt(context, isChecked));
+                    draftIgnoreLowVersion[0],
+                    (buttonView, isChecked) -> draftIgnoreLowVersion[0] = isChecked);
         }
 
         addSectionHeader(context, root, "饮水机");
 
         addSwitchItem(context, root, "饮水机备注与收藏", "点击星星收藏置顶，长按水机名称修改备注，支持全部收藏视图（支持联网/公共水机）",
-                ModuleConfig.isWaterDispenserEnabled(context),
-                (buttonView, isChecked) -> ModuleConfig.setWaterDispenserEnabled(context, isChecked));
+                draftWaterDispenser[0],
+                (buttonView, isChecked) -> draftWaterDispenser[0] = isChecked);
 
         addSwitchItem(context, root, "默认进入全部收藏", "打开饮水机页面时，有收藏则优先展示“全部收藏”",
-                ModuleConfig.isWaterDefaultAllFavEnabled(context),
-                (buttonView, isChecked) -> ModuleConfig.setWaterDefaultAllFavEnabled(context, isChecked));
+                draftWaterDefaultAllFav[0],
+                (buttonView, isChecked) -> draftWaterDefaultAllFav[0] = isChecked);
 
         if (ModuleConfig.EXPERIMENTAL_FEATURES_ENABLED) {
             addSectionHeader(context, root, "设备使用与结算");
 
-            addSwitchItem(context, root, "跳过“开始使用”二次确认", "点击“开始使用”后自动确认弹窗，省去手动二次确认",
-                    ModuleConfig.isWaterAutoConfirmEnabled(context),
+            addSwitchItem(context, root, "跳过「开始使用」二次确认", "点击「开始使用」后自动确认「确认开始使用」弹窗",
+                    draftWaterAutoConfirm[0],
                     (buttonView, isChecked) -> {
-                        if (isChecked && !ModuleConfig.hasSeenAutoConfirmTip(context)) {
+                        if (isChecked && !draftHasSeenAutoConfirmTip[0]) {
                             showAutoConfirmTipDialog(context, () -> {
-                                ModuleConfig.setHasSeenAutoConfirmTip(context, true);
-                                ModuleConfig.setWaterAutoConfirmEnabled(context, true);
+                                draftHasSeenAutoConfirmTip[0] = true;
+                                draftWaterAutoConfirm[0] = true;
                             }, () -> {
                                 buttonView.setChecked(false);
-                                ModuleConfig.setWaterAutoConfirmEnabled(context, false);
+                                draftWaterAutoConfirm[0] = false;
                             });
                         } else {
-                            ModuleConfig.setWaterAutoConfirmEnabled(context, isChecked);
+                            draftWaterAutoConfirm[0] = isChecked;
                         }
                     });
 
             addSwitchItem(context, root, "长按滑块快速结算", "长按滑块 0.5 秒即可结算，无需费力向右拖动",
-                    ModuleConfig.isWaterHoldToSettleEnabled(context),
-                    (buttonView, isChecked) -> ModuleConfig.setWaterHoldToSettleEnabled(context, isChecked));
+                    draftWaterHoldToSettle[0],
+                    (buttonView, isChecked) -> draftWaterHoldToSettle[0] = isChecked);
+
+            // ---- 娱乐：长按按钮主题（点击后弹出带动态预览的选择器）----
+            addSectionHeader(context, root, "娱乐");
+
+            LinearLayout themeRow = new LinearLayout(context);
+            themeRow.setOrientation(LinearLayout.HORIZONTAL);
+            themeRow.setGravity(Gravity.CENTER_VERTICAL);
+            themeRow.setPadding(0, dp2px(context, 8), 0, dp2px(context, 8));
+
+            LinearLayout themeTexts = new LinearLayout(context);
+            themeTexts.setOrientation(LinearLayout.VERTICAL);
+
+            TextView tvThemeTitle = new TextView(context);
+            tvThemeTitle.setText("长按按钮主题");
+            tvThemeTitle.setTextSize(15);
+            tvThemeTitle.setTextColor(Color.parseColor("#262626"));
+            tvThemeTitle.getPaint().setFakeBoldText(true);
+            themeTexts.addView(tvThemeTitle);
+
+            TextView tvThemeDesc = new TextView(context);
+            tvThemeDesc.setText("结算时长按按钮的外观，点击可预览并选择");
+            tvThemeDesc.setTextSize(12);
+            tvThemeDesc.setTextColor(Color.parseColor("#8c8c8c"));
+            tvThemeDesc.setPadding(0, dp2px(context, 2), 0, 0);
+            themeTexts.addView(tvThemeDesc);
+
+            themeRow.addView(themeTexts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+            TextView btnTheme = new TextView(context);
+            btnTheme.setText(draftHoldThemeName[0] + "  ▾");
+            btnTheme.setTextSize(12);
+            btnTheme.setTextColor(Color.parseColor("#1082FF"));
+            btnTheme.getPaint().setFakeBoldText(true);
+            btnTheme.setPadding(dp2px(context, 10), dp2px(context, 4), dp2px(context, 10), dp2px(context, 4));
+            GradientDrawable themeBg = new GradientDrawable();
+            themeBg.setColor(Color.parseColor("#EAF2FF"));
+            themeBg.setCornerRadius(dp2px(context, 6));
+            themeBg.setStroke(dp2px(context, 1), Color.parseColor("#CCE1FF"));
+            btnTheme.setBackground(themeBg);
+            themeRow.addView(btnTheme);
+
+            btnTheme.setOnClickListener(v -> {
+                if (!draftWaterHoldToSettle[0]) {
+                    showToast(context, "请先开启「长按滑块快速结算」");
+                    return;
+                }
+                showThemePickerDialog(context, draftHoldTheme[0], (id, name) -> {
+                    draftHoldTheme[0] = id;
+                    draftHoldThemeName[0] = name;
+                    btnTheme.setText(name + "  ▾");
+                });
+            });
+            root.addView(themeRow);
         }
 
         if (BuildConfig.DEBUG) {
             View rowWebDebug = addSwitchItem(context, root, "网页调试模式", null,
-                    ModuleConfig.isWebviewDebugEnabled(context),
-                    (buttonView, isChecked) -> ModuleConfig.setWebviewDebugEnabled(context, isChecked));
+                    draftWebviewDebug[0],
+                    (buttonView, isChecked) -> draftWebviewDebug[0] = isChecked);
 
             View rowDebugHud = addSwitchItem(context, root, "饮水机调试条", "在饮水机页面左下角显示滚动日志",
-                    ModuleConfig.isDebugHudEnabled(context),
-                    (buttonView, isChecked) -> ModuleConfig.setDebugHudEnabled(context, isChecked));
+                    draftDebugHud[0],
+                    (buttonView, isChecked) -> draftDebugHud[0] = isChecked);
 
             boolean isUnlocked = ModuleConfig.isDevOptionsUnlocked(context);
             rowWebDebug.setVisibility(isUnlocked ? View.VISIBLE : View.GONE);
@@ -206,8 +282,8 @@ public class SettingsDialog {
         RadioGroup radioGroup = new RadioGroup(context);
         radioGroup.setOrientation(LinearLayout.VERTICAL);
 
-        int currentMode = ModuleConfig.getDirectLaunchMode(context);
-        String selectedDevice = ModuleConfig.getSelectedDeviceName(context);
+        int currentMode = draftDirectLaunchMode[0];
+        String selectedDevice = draftSelectedDeviceName[0];
         java.util.List<ModuleConfig.SavedDevice> savedDevices = ModuleConfig.getSavedDevices(context);
 
         RadioButton rbHome = createRadioButton(context, "默认进入首页", ModuleConfig.DIRECT_LAUNCH_HOME);
@@ -230,7 +306,7 @@ public class SettingsDialog {
             View rb = group.findViewById(checkedId);
             if (rb != null && rb.getTag() instanceof Integer) {
                 int selected = (int) rb.getTag();
-                ModuleConfig.setDirectLaunchMode(context, selected);
+                draftDirectLaunchMode[0] = selected;
             }
         });
 
@@ -270,7 +346,7 @@ public class SettingsDialog {
 
             String[] names = new String[currentSaved.size()];
             int checkedItem = 0;
-            String curName = ModuleConfig.getSelectedDeviceName(context);
+            String curName = draftSelectedDeviceName[0];
             for (int i = 0; i < currentSaved.size(); i++) {
                 names[i] = currentSaved.get(i).name;
                 if (names[i].equals(curName)) {
@@ -280,10 +356,10 @@ public class SettingsDialog {
 
             showModernSingleChoiceDialog(context, "选择直达目标设备", names, checkedItem, which -> {
                 String chosen = names[which];
-                ModuleConfig.setSelectedDeviceName(context, chosen);
+                draftSelectedDeviceName[0] = chosen;
                 btnDevicePicker.setText(chosen + "  ▾");
                 rbDevice.setChecked(true);
-                ModuleConfig.setDirectLaunchMode(context, ModuleConfig.DIRECT_LAUNCH_DISPENSER);
+                draftDirectLaunchMode[0] = ModuleConfig.DIRECT_LAUNCH_DISPENSER;
             });
         });
 
@@ -323,7 +399,29 @@ public class SettingsDialog {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         bottomBar.addView(btnClose, btnLp);
 
-        btnClose.setOnClickListener(v -> dialog.dismiss());
+        btnClose.setOnClickListener(v -> {
+            ModuleConfig.setSplashAdBlockEnabled(context, draftSplashAdBlock[0]);
+            ModuleConfig.setLoadingPassThroughEnabled(context, draftLoadingPassThrough[0]);
+            if (isHostVersionLower(context, "1.5.7")) {
+                ModuleConfig.setIgnoreLowVersionPrompt(context, draftIgnoreLowVersion[0]);
+            }
+            ModuleConfig.setWaterDispenserEnabled(context, draftWaterDispenser[0]);
+            ModuleConfig.setWaterDefaultAllFavEnabled(context, draftWaterDefaultAllFav[0]);
+            if (ModuleConfig.EXPERIMENTAL_FEATURES_ENABLED) {
+                ModuleConfig.setWaterAutoConfirmEnabled(context, draftWaterAutoConfirm[0]);
+                ModuleConfig.setWaterHoldToSettleEnabled(context, draftWaterHoldToSettle[0]);
+                ModuleConfig.setWaterHoldTheme(context, draftHoldTheme[0]);
+                ModuleConfig.setWaterHoldThemeName(context, draftHoldThemeName[0]);
+                ModuleConfig.setHasSeenAutoConfirmTip(context, draftHasSeenAutoConfirmTip[0]);
+            }
+            if (BuildConfig.DEBUG) {
+                ModuleConfig.setWebviewDebugEnabled(context, draftWebviewDebug[0]);
+                ModuleConfig.setDebugHudEnabled(context, draftDebugHud[0]);
+            }
+            ModuleConfig.setDirectLaunchMode(context, draftDirectLaunchMode[0]);
+            ModuleConfig.setSelectedDeviceName(context, draftSelectedDeviceName[0]);
+            dialog.dismiss();
+        });
 
         dialog.setCancelable(true);
         dialog.setCanceledOnTouchOutside(true);
@@ -639,7 +737,7 @@ public class SettingsDialog {
         noticeBox.addView(tvNoticeTitle);
 
         TextView tvNoticeContent = new TextView(act);
-        tvNoticeContent.setText("点击「开始使用」后将直接出水，不再弹出二次确认");
+        tvNoticeContent.setText("点击「开始使用」后将直接启用设备，不再弹出二次确认");
         tvNoticeContent.setTextSize(13);
         tvNoticeContent.setTextColor(Color.parseColor("#4B5563"));
         tvNoticeContent.setLineSpacing(dp2px(act, 4), 1.0f);
@@ -817,6 +915,178 @@ public class SettingsDialog {
         Window w = d.getWindow();
         if (w != null) {
             int width = (int) (act.getResources().getDisplayMetrics().widthPixels * 0.82);
+            w.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT);
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            enforceWindowState(d, w);
+        }
+    }
+
+    // ======================================================================
+    // 长按按钮主题选择器（动态预览）
+    // 预览页由 drink_water.js 自己渲染（预览模式），与真实按钮同一份 CSS/DOM，
+    // 以后新增主题只需改 drink_water.js 里的 THEME_META 与对应 CSS，这里不用动。
+    // ======================================================================
+
+    private interface OnThemePick {
+        void onPick(String id, String name);
+    }
+
+    /** 读取 drink_water.js 全文。优先从模块 ClassLoader 读取，回退至 assets。 */
+    private static String loadDrinkWaterScript(Context context) {
+        try (java.io.InputStream in = SettingsDialog.class.getClassLoader().getResourceAsStream("assets/drink_water.js")) {
+            if (in != null) {
+                return readStreamToString(in);
+            }
+        } catch (Throwable ignored) {
+        }
+        try (java.io.InputStream in = context.getAssets().open("drink_water.js")) {
+            return readStreamToString(in);
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static String readStreamToString(java.io.InputStream in) throws java.io.IOException {
+        try (java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            return out.toString("UTF-8");
+        }
+    }
+
+    private static String sanitizeThemeId(String id) {
+        return (id != null && id.matches("[a-z0-9_-]{1,24}")) ? id : null;
+    }
+
+    private static String buildThemePreviewHtml(String script, String selectedId) {
+        String safeId = sanitizeThemeId(selectedId);
+        if (safeId == null) safeId = "classic";
+        String safeScript = script.replace("</script", "<\\/script");
+        return "<!doctype html><html><head><meta charset=\"utf-8\">"
+                + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,user-scalable=no\">"
+                + "<style>html,body{margin:0;padding:0;background:transparent;}</style></head><body>"
+                + "<script>window.__XL_DW_PREVIEW__=true;</script>"
+                + "<script>" + safeScript + "</script>"
+                + "<script>__XL_DW_PREVIEW_API__.renderPicker(document.body,\"" + safeId
+                + "\",function(id,name){XLBridge.pick(id,name);});</script>"
+                + "</body></html>";
+    }
+
+    private static final class ThemeBridge {
+        private final Handler main = new Handler(Looper.getMainLooper());
+        private final OnThemePick cb;
+        private final Dialog dialog;
+        private boolean done;
+
+        ThemeBridge(Dialog dialog, OnThemePick cb) {
+            this.dialog = dialog;
+            this.cb = cb;
+        }
+
+        @JavascriptInterface
+        public void pick(String id, String name) {
+            final String safeId = sanitizeThemeId(id);
+            if (safeId == null) return;
+            String n = name == null ? "" : name.trim();
+            if (n.length() > 12) n = n.substring(0, 12);
+            final String safeName = n.isEmpty() ? safeId : n;
+            main.post(() -> {
+                if (done) return;
+                done = true;
+                if (cb != null) cb.onPick(safeId, safeName);
+                // 留一点时间让用户看到选中态再关闭
+                main.postDelayed(() -> {
+                    try { dialog.dismiss(); } catch (Throwable ignored) { }
+                }, 260);
+            });
+        }
+    }
+
+    private static void showThemePickerDialog(Context context, String currentId, OnThemePick callback) {
+        Activity act = findActivity(context);
+        if (act == null || act.isFinishing() || act.isDestroyed()) return;
+
+        String script = loadDrinkWaterScript(context);
+        if (script == null || script.isEmpty()) {
+            showToast(context, "无法加载预览资源");
+            return;
+        }
+
+        Dialog d = new Dialog(act);
+        d.setCancelable(true);
+        d.setCanceledOnTouchOutside(true);
+
+        LinearLayout card = new LinearLayout(act);
+        card.setOrientation(LinearLayout.VERTICAL);
+        int padH = dp2px(act, 18);
+        card.setPadding(padH, dp2px(act, 20), padH, dp2px(act, 14));
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.WHITE);
+        bg.setCornerRadius(dp2px(act, 20));
+        card.setBackground(bg);
+
+        TextView tvTitle = new TextView(act);
+        tvTitle.setText("选择长按按钮主题");
+        tvTitle.setTextSize(17);
+        tvTitle.setTextColor(Color.parseColor("#1f1f1f"));
+        tvTitle.getPaint().setFakeBoldText(true);
+        card.addView(tvTitle);
+
+        TextView tvHint = new TextView(act);
+        tvHint.setText("预览会自动演示长按效果，点击卡片即可选用");
+        tvHint.setTextSize(12);
+        tvHint.setTextColor(Color.parseColor("#8c8c8c"));
+        tvHint.setPadding(0, dp2px(act, 4), 0, dp2px(act, 8));
+        card.addView(tvHint);
+
+        WebView web = new WebView(act);
+        web.setBackgroundColor(Color.TRANSPARENT);
+        web.setVerticalScrollBarEnabled(false);
+        web.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        WebSettings ws = web.getSettings();
+        ws.setJavaScriptEnabled(true);
+        ws.setAllowFileAccess(false);
+        ws.setAllowContentAccess(false);
+        ws.setDomStorageEnabled(false);
+        ws.setSupportZoom(false);
+        web.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                return true; // 预览页不允许任何跳转
+            }
+        });
+        web.addJavascriptInterface(new ThemeBridge(d, callback), "XLBridge");
+        web.loadDataWithBaseURL(null, buildThemePreviewHtml(script, currentId), "text/html", "utf-8", null);
+
+        int webH = (int) (act.getResources().getDisplayMetrics().heightPixels * 0.55);
+        card.addView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, webH));
+
+        TextView btnCancel = new TextView(act);
+        btnCancel.setText("取消");
+        btnCancel.setTextSize(14);
+        btnCancel.setTextColor(Color.parseColor("#8C8C8C"));
+        btnCancel.setGravity(Gravity.CENTER);
+        btnCancel.setPadding(0, dp2px(act, 10), 0, 0);
+        btnCancel.setOnClickListener(v -> d.dismiss());
+        card.addView(btnCancel);
+
+        d.setOnDismissListener(x -> {
+            try {
+                web.stopLoading();
+                web.removeJavascriptInterface("XLBridge");
+                web.loadUrl("about:blank");
+                web.destroy();
+            } catch (Throwable ignored) { }
+        });
+
+        d.setContentView(card);
+        d.show();
+
+        Window w = d.getWindow();
+        if (w != null) {
+            int width = (int) (act.getResources().getDisplayMetrics().widthPixels * 0.88);
             w.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT);
             w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
             enforceWindowState(d, w);

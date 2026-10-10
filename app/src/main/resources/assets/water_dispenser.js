@@ -783,7 +783,7 @@
       const cur = aliases[raw] || {};
       inputAlias.value = cur.name || '';
       inputAlias.placeholder = raw;
-      toggleRaw.checked = cur.showRaw !== false;
+      toggleRaw.checked = cur.showRaw === true;
       selectedColor = cur.color || 'default';
 
       updatePaletteUI();
