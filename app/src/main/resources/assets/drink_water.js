@@ -1,6 +1,6 @@
 /*!
  * drink_water.js — 打水页（pages/drinkwater/drinkwater）用户辅助脚本
- *  1. 自动确认“开始使用”弹窗（每次弹窗打开只触发一次）
+ *  1. 自动确认“开始使用”弹窗（仅限你点击“开始使用”后的短时间窗口内，对弹出的那一个弹窗点一次）
  *  2. 长按 0.5s 结算找零（胶囊进度按钮，替代拖动滑块）
  *
  * 生命周期：宿主是 SPA 容器，WebView/Window 在多次进出打水页之间不会重建，
@@ -32,7 +32,12 @@
     // 支付宝小程序容器的 tap 由 touchstart/touchend 合成，默认派发一次 touch 序列；
     // 若日志提示“确认后弹窗仍可见”，改成 'click' 再试（二选一，绝不同时派发）
     confirmMode: 'touch',    // 'touch' | 'click'
-    confirmMinGapMs: 1500,   // 两次自动确认之间的最小间隔（防高频连点）
+    // 自动确认的安全范围（防止网站以后新增别的“确认”弹窗被误点）：
+    //   ① 只有你亲手点了“开始使用”按钮，才在这个时间窗口内“武装”；窗口内弹出的第一个确认弹窗点一次，用完即失效
+    //   ② 只在“待开始”阶段生效（“开始使用”按钮可见且 .sliders 未出现）
+    //   ③ 弹窗正文必须匹配 confirmBodyPattern（每次自动确认都会在日志里打印弹窗正文，文案变了可据此调整）
+    confirmArmMs: 5000,
+    confirmBodyPattern: /开始使用/,   // 实测两种弹窗正文都含“开始使用”：“确认开始使用？”（联网机）/“…确认后开始使用。”（公共机）；设为 null 则不限制
     confirmVerifyMs: 1500,   // 确认后多久检查弹窗是否已关闭；没关则撤掉压制样式，让用户手动点
     debug: true
   };
@@ -175,20 +180,25 @@
   // 页面判定：以“可见的页面特征”为准（SPA 里 URL 不一定随页面变化）
   //   .sliders 可见（已开始使用），或“开始使用”主按钮可见（待开始）
   // =====================================================================
-  function onTargetPage() {
-    var s = document.querySelector('.sliders');
-    if (s && isShown(s)) return true;
+  function startBtnShown() {
     var btns = document.querySelectorAll('.a-button.btn');
     for (var i = 0; i < btns.length; i++) {
       if (/开始使用/.test(btns[i].textContent || '') && isShown(btns[i])) return true;
     }
     return false;
   }
+  function slidersShown() {
+    var s = document.querySelector('.sliders');
+    return !!(s && isShown(s));
+  }
+  function onTargetPage() { return slidersShown() || startBtnShown(); }
+  // “待开始”阶段：开始按钮可见且还没出现滑块。自动确认只在这个阶段生效
+  function startPhase() { return !slidersShown() && startBtnShown(); }
 
   // =====================================================================
-  // 功能 1：自动确认（按“弹窗从关到开”的边沿触发，每次打开只一次）
+  // 功能 1：自动确认（点“开始使用”后武装 → 窗口内弹出的确认弹窗点一次 → 用完即失效）
   // =====================================================================
-  var popup = { wasOpen: false, lastFire: -Infinity, lastBtn: null, forceReveal: false };
+  var popup = { armedUntil: 0, armTimer: 0, fired: false, forceReveal: false };
 
   function isConfirmText(el) {
     return (el.textContent || '').replace(/\s+/g, '') === '确认';
@@ -216,9 +226,20 @@
     return false;
   }
 
+  function popupBody(btn) {
+    return btn.closest('.l-message-body, .l-message-container');
+  }
+  function bodyMatches(btn) {
+    if (!CONFIG.confirmBodyPattern) return true;
+    var body = popupBody(btn);
+    return !!body && CONFIG.confirmBodyPattern.test(body.textContent || '');
+  }
+
   function fireConfirm(btn) {
-    popup.lastFire = now();   // 先记账再派发：任何重入路径都不会二次触发
-    popup.lastBtn = btn;
+    popup.armedUntil = 0;     // 先“用掉”武装再派发：任何重入路径都不会二次触发
+    popup.fired = true;
+    var body = popupBody(btn);
+    log('自动确认弹窗正文：', body ? (body.textContent || '').replace(/\s+/g, ' ').trim() : '(未取到)');
     try {
       if (CONFIG.confirmMode === 'click') btn.click();
       else dispatchTap(btn);
@@ -236,14 +257,29 @@
   }
 
   function handlePopup(active) {
-    var btn = active ? findConfirmBtn() : null;
+    if (popup.armedUntil && now() > popup.armedUntil) popup.armedUntil = 0;   // 武装过期
+    var btn = startPhase() ? findConfirmBtn() : null;
     var open = !!btn;
-    if (!open) popup.forceReveal = false;
-    // 防连点间隔只约束“同一个按钮节点”的反复开关（宿主重渲染抖动）；新页面实例的新节点不受限
-    if (open && !popup.wasOpen && (btn !== popup.lastBtn || now() - popup.lastFire > CONFIG.confirmMinGapMs)) fireConfirm(btn);
-    popup.wasOpen = open;   // 弹窗关闭后 wasOpen 复位，下一次打开（含下一台水机）会再触发
+    if (!open) { popup.forceReveal = false; popup.fired = false; }
+    var armed = popup.armedUntil > 0;
+    // 只有：已武装 + 待开始阶段 + 弹窗已打开 + 还没点过 + 正文符合（若配置了）才点
+    if (armed && open && !popup.fired && bodyMatches(btn)) fireConfirm(btn);
+    // 静态压制只在武装期间（以及点完到弹窗关闭之前）存在；别的弹窗（含非“确认”按钮的）一律不压制
     var foreign = active && otherPopupShown();
-    popupHide.set(active && !foreign && !popup.forceReveal);
+    popupHide.set(active && (popup.armedUntil > 0 || popup.fired) && !foreign && !popup.forceReveal);
+  }
+
+  // 用户亲手点了“开始使用”：武装，并同步压制（赶在弹窗首帧之前，不能等 rAF 扫描）
+  function onUserTap(e) {
+    if (disposed || !CONFIG.autoConfirm) return;
+    var t = e.target;
+    var b = t && t.closest && t.closest('.a-button.btn');
+    if (!b || !/开始使用/.test(b.textContent || '')) return;
+    popup.armedUntil = now() + CONFIG.confirmArmMs;
+    popupHide.set(true);
+    clearTimeout(popup.armTimer);
+    popup.armTimer = setTimeout(schedule, CONFIG.confirmArmMs + 50);   // 到期后重扫一次，撤掉压制
+    log('已武装自动确认', CONFIG.confirmArmMs + 'ms');
   }
 
   // =====================================================================
@@ -479,6 +515,10 @@
     });
     winEvents.forEach(function (n) { window.addEventListener(n, schedule); });
     document.addEventListener('visibilitychange', onVisible);
+    if (CONFIG.autoConfirm) {
+      document.addEventListener('touchend', onUserTap, true);   // 捕获阶段：先于页面自己的处理
+      document.addEventListener('click', onUserTap, true);
+    }
     scan();
     log('已启动', 'autoConfirm=' + CONFIG.autoConfirm, 'mode=' + CONFIG.mode);
   }
@@ -488,6 +528,9 @@
     observer.disconnect();
     winEvents.forEach(function (n) { window.removeEventListener(n, schedule); });
     document.removeEventListener('visibilitychange', onVisible);
+    document.removeEventListener('touchend', onUserTap, true);
+    document.removeEventListener('click', onUserTap, true);
+    clearTimeout(popup.armTimer);
     if (hold) { hold.destroy(); hold = null; }
     popupHide.set(false);
     holdHide.set(false);
