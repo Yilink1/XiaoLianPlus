@@ -141,10 +141,6 @@ public class SettingsDialog {
                 ModuleConfig.isLoadingPassThroughEnabled(context),
                 (buttonView, isChecked) -> ModuleConfig.setLoadingPassThroughEnabled(context, isChecked));
 
-        addSwitchItem(context, root, "详细调试日志", "默认关闭以避免日志刷屏，排查问题时开启以记录完整运行日志",
-                ModuleConfig.isVerboseLogEnabled(context),
-                (buttonView, isChecked) -> ModuleConfig.setVerboseLogEnabled(context, isChecked));
-
         if (isHostVersionLower(context, "1.5.7")) {
             addSwitchItem(context, root, "关闭低版本提示", "低于 1.5.7 版本不再提示",
                     ModuleConfig.isIgnoreLowVersionPrompt(context),
@@ -353,6 +349,12 @@ public class SettingsDialog {
 
         devicePickerRow.addView(btnDevicePicker);
         root.addView(devicePickerRow);
+
+        addSectionHeader(context, root, "高级与调试");
+
+        addSwitchItem(context, root, "详细调试日志", "默认关闭，排查问题时开启",
+                ModuleConfig.isVerboseLogEnabled(context),
+                (buttonView, isChecked) -> ModuleConfig.setVerboseLogEnabled(context, isChecked));
 
         root.addView(createDivider(context));
 
