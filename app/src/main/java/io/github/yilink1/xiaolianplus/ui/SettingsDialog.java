@@ -130,71 +130,55 @@ public class SettingsDialog {
         // 分割线
         root.addView(createDivider(context));
 
-        // 临时草稿状态（点击底部「完成设置」时才统一持久化保存；返回/点外部退出则丢弃改动不保存）
-        final boolean[] draftSplashAdBlock = { ModuleConfig.isSplashAdBlockEnabled(context) };
-        final boolean[] draftLoadingPassThrough = { ModuleConfig.isLoadingPassThroughEnabled(context) };
-        final boolean[] draftIgnoreLowVersion = { ModuleConfig.isIgnoreLowVersionPrompt(context) };
-        final boolean[] draftWaterDispenser = { ModuleConfig.isWaterDispenserEnabled(context) };
-        final boolean[] draftWaterDefaultAllFav = { ModuleConfig.isWaterDefaultAllFavEnabled(context) };
-        final boolean[] draftWaterAutoConfirm = { ModuleConfig.isWaterAutoConfirmEnabled(context) };
-        final boolean[] draftWaterHoldToSettle = { ModuleConfig.isWaterHoldToSettleEnabled(context) };
-        final String[] draftHoldTheme = { ModuleConfig.getWaterHoldTheme(context) };
-        final String[] draftHoldThemeName = { ModuleConfig.getWaterHoldThemeName(context) };
-        final boolean[] draftWebviewDebug = { ModuleConfig.isWebviewDebugEnabled(context) };
-        final boolean[] draftDebugHud = { ModuleConfig.isDebugHudEnabled(context) };
-        final int[] draftDirectLaunchMode = { ModuleConfig.getDirectLaunchMode(context) };
-        final String[] draftSelectedDeviceName = { ModuleConfig.getSelectedDeviceName(context) };
-        final boolean[] draftHasSeenAutoConfirmTip = { ModuleConfig.hasSeenAutoConfirmTip(context) };
-
         // 2. 开关群
         addSectionHeader(context, root, "基础与通用");
 
         addSwitchItem(context, root, "跳过开屏广告", "打开应用时自动跳过启动页广告",
-                draftSplashAdBlock[0],
-                (buttonView, isChecked) -> draftSplashAdBlock[0] = isChecked);
+                ModuleConfig.isSplashAdBlockEnabled(context),
+                (buttonView, isChecked) -> ModuleConfig.setSplashAdBlockEnabled(context, isChecked));
 
         addSwitchItem(context, root, "加载中允许直接扫码", "页面正在加载列表时，依然可以直接点击右下角扫码",
-                draftLoadingPassThrough[0],
-                (buttonView, isChecked) -> draftLoadingPassThrough[0] = isChecked);
+                ModuleConfig.isLoadingPassThroughEnabled(context),
+                (buttonView, isChecked) -> ModuleConfig.setLoadingPassThroughEnabled(context, isChecked));
 
         if (isHostVersionLower(context, "1.5.7")) {
             addSwitchItem(context, root, "关闭低版本提示", "低于 1.5.7 版本不再提示",
-                    draftIgnoreLowVersion[0],
-                    (buttonView, isChecked) -> draftIgnoreLowVersion[0] = isChecked);
+                    ModuleConfig.isIgnoreLowVersionPrompt(context),
+                    (buttonView, isChecked) -> ModuleConfig.setIgnoreLowVersionPrompt(context, isChecked));
         }
 
         addSectionHeader(context, root, "饮水机");
 
         addSwitchItem(context, root, "饮水机备注与收藏", "点击星星收藏置顶，长按水机名称修改备注，支持全部收藏视图（支持联网/公共水机）",
-                draftWaterDispenser[0],
-                (buttonView, isChecked) -> draftWaterDispenser[0] = isChecked);
+                ModuleConfig.isWaterDispenserEnabled(context),
+                (buttonView, isChecked) -> ModuleConfig.setWaterDispenserEnabled(context, isChecked));
 
         addSwitchItem(context, root, "默认进入全部收藏", "打开饮水机页面时，有收藏则优先展示“全部收藏”",
-                draftWaterDefaultAllFav[0],
-                (buttonView, isChecked) -> draftWaterDefaultAllFav[0] = isChecked);
+                ModuleConfig.isWaterDefaultAllFavEnabled(context),
+                (buttonView, isChecked) -> ModuleConfig.setWaterDefaultAllFavEnabled(context, isChecked));
 
         if (ModuleConfig.EXPERIMENTAL_FEATURES_ENABLED) {
             addSectionHeader(context, root, "设备使用与结算");
 
             addSwitchItem(context, root, "跳过「开始使用」二次确认", "点击「开始使用」后自动确认「确认开始使用」弹窗",
-                    draftWaterAutoConfirm[0],
+                    ModuleConfig.isWaterAutoConfirmEnabled(context),
                     (buttonView, isChecked) -> {
-                        if (isChecked && !draftHasSeenAutoConfirmTip[0]) {
+                        if (isChecked && !ModuleConfig.hasSeenAutoConfirmTip(context)) {
                             showAutoConfirmTipDialog(context, () -> {
-                                draftHasSeenAutoConfirmTip[0] = true;
-                                draftWaterAutoConfirm[0] = true;
+                                ModuleConfig.setHasSeenAutoConfirmTip(context, true);
+                                ModuleConfig.setWaterAutoConfirmEnabled(context, true);
                             }, () -> {
                                 buttonView.setChecked(false);
-                                draftWaterAutoConfirm[0] = false;
+                                ModuleConfig.setWaterAutoConfirmEnabled(context, false);
                             });
                         } else {
-                            draftWaterAutoConfirm[0] = isChecked;
+                            ModuleConfig.setWaterAutoConfirmEnabled(context, isChecked);
                         }
                     });
 
             addSwitchItem(context, root, "长按滑块快速结算", "长按滑块 0.5 秒即可结算，无需费力向右拖动",
-                    draftWaterHoldToSettle[0],
-                    (buttonView, isChecked) -> draftWaterHoldToSettle[0] = isChecked);
+                    ModuleConfig.isWaterHoldToSettleEnabled(context),
+                    (buttonView, isChecked) -> ModuleConfig.setWaterHoldToSettleEnabled(context, isChecked));
 
             // ---- 娱乐：长按按钮主题（点击后弹出带动态预览的选择器）----
             addSectionHeader(context, root, "娱乐");
@@ -224,7 +208,7 @@ public class SettingsDialog {
             themeRow.addView(themeTexts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
             TextView btnTheme = new TextView(context);
-            btnTheme.setText(draftHoldThemeName[0] + "  ▾");
+            btnTheme.setText(ModuleConfig.getWaterHoldThemeName(context) + "  ▾");
             btnTheme.setTextSize(12);
             btnTheme.setTextColor(Color.parseColor("#1082FF"));
             btnTheme.getPaint().setFakeBoldText(true);
@@ -237,13 +221,13 @@ public class SettingsDialog {
             themeRow.addView(btnTheme);
 
             btnTheme.setOnClickListener(v -> {
-                if (!draftWaterHoldToSettle[0]) {
+                if (!ModuleConfig.isWaterHoldToSettleEnabled(context)) {
                     showToast(context, "请先开启「长按滑块快速结算」");
                     return;
                 }
-                showThemePickerDialog(context, draftHoldTheme[0], (id, name) -> {
-                    draftHoldTheme[0] = id;
-                    draftHoldThemeName[0] = name;
+                showThemePickerDialog(context, ModuleConfig.getWaterHoldTheme(context), (id, name) -> {
+                    ModuleConfig.setWaterHoldTheme(context, id);
+                    ModuleConfig.setWaterHoldThemeName(context, name);
                     btnTheme.setText(name + "  ▾");
                 });
             });
@@ -252,12 +236,12 @@ public class SettingsDialog {
 
         if (BuildConfig.DEBUG) {
             View rowWebDebug = addSwitchItem(context, root, "网页调试模式", null,
-                    draftWebviewDebug[0],
-                    (buttonView, isChecked) -> draftWebviewDebug[0] = isChecked);
+                    ModuleConfig.isWebviewDebugEnabled(context),
+                    (buttonView, isChecked) -> ModuleConfig.setWebviewDebugEnabled(context, isChecked));
 
             View rowDebugHud = addSwitchItem(context, root, "饮水机调试条", "在饮水机页面左下角显示滚动日志",
-                    draftDebugHud[0],
-                    (buttonView, isChecked) -> draftDebugHud[0] = isChecked);
+                    ModuleConfig.isDebugHudEnabled(context),
+                    (buttonView, isChecked) -> ModuleConfig.setDebugHudEnabled(context, isChecked));
 
             boolean isUnlocked = ModuleConfig.isDevOptionsUnlocked(context);
             rowWebDebug.setVisibility(isUnlocked ? View.VISIBLE : View.GONE);
@@ -282,8 +266,8 @@ public class SettingsDialog {
         RadioGroup radioGroup = new RadioGroup(context);
         radioGroup.setOrientation(LinearLayout.VERTICAL);
 
-        int currentMode = draftDirectLaunchMode[0];
-        String selectedDevice = draftSelectedDeviceName[0];
+        int currentMode = ModuleConfig.getDirectLaunchMode(context);
+        String selectedDevice = ModuleConfig.getSelectedDeviceName(context);
         java.util.List<ModuleConfig.SavedDevice> savedDevices = ModuleConfig.getSavedDevices(context);
 
         RadioButton rbHome = createRadioButton(context, "默认进入首页", ModuleConfig.DIRECT_LAUNCH_HOME);
@@ -306,7 +290,7 @@ public class SettingsDialog {
             View rb = group.findViewById(checkedId);
             if (rb != null && rb.getTag() instanceof Integer) {
                 int selected = (int) rb.getTag();
-                draftDirectLaunchMode[0] = selected;
+                ModuleConfig.setDirectLaunchMode(context, selected);
             }
         });
 
@@ -346,7 +330,7 @@ public class SettingsDialog {
 
             String[] names = new String[currentSaved.size()];
             int checkedItem = 0;
-            String curName = draftSelectedDeviceName[0];
+            String curName = ModuleConfig.getSelectedDeviceName(context);
             for (int i = 0; i < currentSaved.size(); i++) {
                 names[i] = currentSaved.get(i).name;
                 if (names[i].equals(curName)) {
@@ -356,10 +340,10 @@ public class SettingsDialog {
 
             showModernSingleChoiceDialog(context, "选择直达目标设备", names, checkedItem, which -> {
                 String chosen = names[which];
-                draftSelectedDeviceName[0] = chosen;
+                ModuleConfig.setSelectedDeviceName(context, chosen);
                 btnDevicePicker.setText(chosen + "  ▾");
                 rbDevice.setChecked(true);
-                draftDirectLaunchMode[0] = ModuleConfig.DIRECT_LAUNCH_DISPENSER;
+                ModuleConfig.setDirectLaunchMode(context, ModuleConfig.DIRECT_LAUNCH_DISPENSER);
             });
         });
 
@@ -399,29 +383,7 @@ public class SettingsDialog {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         bottomBar.addView(btnClose, btnLp);
 
-        btnClose.setOnClickListener(v -> {
-            ModuleConfig.setSplashAdBlockEnabled(context, draftSplashAdBlock[0]);
-            ModuleConfig.setLoadingPassThroughEnabled(context, draftLoadingPassThrough[0]);
-            if (isHostVersionLower(context, "1.5.7")) {
-                ModuleConfig.setIgnoreLowVersionPrompt(context, draftIgnoreLowVersion[0]);
-            }
-            ModuleConfig.setWaterDispenserEnabled(context, draftWaterDispenser[0]);
-            ModuleConfig.setWaterDefaultAllFavEnabled(context, draftWaterDefaultAllFav[0]);
-            if (ModuleConfig.EXPERIMENTAL_FEATURES_ENABLED) {
-                ModuleConfig.setWaterAutoConfirmEnabled(context, draftWaterAutoConfirm[0]);
-                ModuleConfig.setWaterHoldToSettleEnabled(context, draftWaterHoldToSettle[0]);
-                ModuleConfig.setWaterHoldTheme(context, draftHoldTheme[0]);
-                ModuleConfig.setWaterHoldThemeName(context, draftHoldThemeName[0]);
-                ModuleConfig.setHasSeenAutoConfirmTip(context, draftHasSeenAutoConfirmTip[0]);
-            }
-            if (BuildConfig.DEBUG) {
-                ModuleConfig.setWebviewDebugEnabled(context, draftWebviewDebug[0]);
-                ModuleConfig.setDebugHudEnabled(context, draftDebugHud[0]);
-            }
-            ModuleConfig.setDirectLaunchMode(context, draftDirectLaunchMode[0]);
-            ModuleConfig.setSelectedDeviceName(context, draftSelectedDeviceName[0]);
-            dialog.dismiss();
-        });
+        btnClose.setOnClickListener(v -> dialog.dismiss());
 
         dialog.setCancelable(true);
         dialog.setCanceledOnTouchOutside(true);

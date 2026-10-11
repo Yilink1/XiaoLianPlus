@@ -496,7 +496,10 @@ public class WaterDispenserHooker {
 
         if (webView instanceof View) {
             Context ctx = ((View) webView).getContext();
-            if (!io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterDispenserEnabled(ctx)) {
+            boolean anyFeatureEnabled = io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterDispenserEnabled(ctx)
+                    || io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterAutoConfirmEnabled(ctx)
+                    || io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterHoldToSettleEnabled(ctx);
+            if (!anyFeatureEnabled) {
                 return;
             }
         }
@@ -513,6 +516,7 @@ public class WaterDispenserHooker {
                     }
                 }
 
+                boolean waterDispenserEnabled = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterDispenserEnabled(targetCtx);
                 boolean autoConfirm = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterAutoConfirmEnabled(targetCtx);
                 boolean holdToSettle = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterHoldToSettleEnabled(targetCtx);
                 boolean defaultAllFav = targetCtx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isWaterDefaultAllFavEnabled(targetCtx);
@@ -532,8 +536,10 @@ public class WaterDispenserHooker {
                   .append(", debugHud: ").append(debugHud)
                   .append(", holdTheme: '").append(holdTheme).append("'")
                   .append(" };\n");
-                sb.append(mScriptContent != null ? mScriptContent : "").append("\n");
-                if (mDrinkWaterScriptContent != null && !mDrinkWaterScriptContent.isEmpty()) {
+                if (waterDispenserEnabled && mScriptContent != null) {
+                    sb.append(mScriptContent).append("\n");
+                }
+                if ((autoConfirm || holdToSettle) && mDrinkWaterScriptContent != null && !mDrinkWaterScriptContent.isEmpty()) {
                     sb.append(mDrinkWaterScriptContent).append("\n");
                 }
                 String scriptToRun = sb.toString();
