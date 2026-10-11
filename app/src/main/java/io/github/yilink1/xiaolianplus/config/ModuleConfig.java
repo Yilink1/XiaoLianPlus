@@ -161,6 +161,16 @@ public class ModuleConfig {
         getPrefs(context).edit().putInt(KEY_DIRECT_LAUNCH_MODE, mode).apply();
     }
 
+    public static final String KEY_VERBOSE_LOG = "key_verbose_log";
+
+    public static boolean isVerboseLogEnabled(Context context) {
+        return getPrefs(context).getBoolean(KEY_VERBOSE_LOG, false);
+    }
+
+    public static void setVerboseLogEnabled(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(KEY_VERBOSE_LOG, enabled).apply();
+    }
+
     public static final String KEY_DEV_OPTIONS_UNLOCKED = "key_dev_options_unlocked";
     public static final String KEY_IGNORE_LOW_VERSION_PROMPT = "key_ignore_low_version_prompt";
 

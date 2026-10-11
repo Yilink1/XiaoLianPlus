@@ -51,10 +51,10 @@ public class WaterDispenserHooker {
         mDrinkWaterScriptContent = loadAssetFile("assets/drink_water.js");
 
         if (mScriptContent == null) {
-            mModule.log(Log.ERROR, TAG, "water_dispenser.js could not be loaded from any source!");
+            mModule.appLog(Log.ERROR, TAG, "water_dispenser.js could not be loaded from any source!");
         }
         if (mDrinkWaterScriptContent == null) {
-            mModule.log(Log.ERROR, TAG, "drink_water.js could not be loaded from any source!");
+            mModule.appLog(Log.ERROR, TAG, "drink_water.js could not be loaded from any source!");
         }
     }
 
@@ -63,7 +63,7 @@ public class WaterDispenserHooker {
         try (InputStream is = getClass().getClassLoader().getResourceAsStream(assetPath)) {
             if (is != null) {
                 String content = readStream(is);
-                mModule.log(Log.INFO, TAG, assetPath + " loaded from classloader (" + content.length() + " chars)");
+                mModule.appLog(Log.INFO, TAG, assetPath + " loaded from classloader (" + content.length() + " chars)");
                 return content;
             }
         } catch (Throwable ignored) {
@@ -78,14 +78,14 @@ public class WaterDispenserHooker {
                     if (entry != null) {
                         try (InputStream is = zip.getInputStream(entry)) {
                             String content = readStream(is);
-                            mModule.log(Log.INFO, TAG, assetPath + " loaded from module APK zip (" + content.length() + " chars)");
+                            mModule.appLog(Log.INFO, TAG, assetPath + " loaded from module APK zip (" + content.length() + " chars)");
                             return content;
                         }
                     }
                 }
             }
         } catch (Throwable t) {
-            mModule.log(Log.WARN, TAG, "Failed to read " + assetPath + " from module APK zip", t);
+            mModule.appLog(Log.WARN, TAG, "Failed to read " + assetPath + " from module APK zip", t);
         }
         return null;
     }
@@ -105,7 +105,7 @@ public class WaterDispenserHooker {
      */
     public void onMriverActivityCreated(Activity activity) {
         if (activity == null) return;
-        mModule.log(Log.INFO, TAG, "onMriverActivityCreated: " + activity.getClass().getName());
+        mModule.appLog(Log.INFO, TAG, "onMriverActivityCreated: " + activity.getClass().getName());
 
         // 尝试使用宿主当前运行时的真实 ClassLoader 安装未完成的 Hook
         initHooks(activity.getClass().getClassLoader());
@@ -149,13 +149,13 @@ public class WaterDispenserHooker {
     private void enableGlobalWebViewDebugging(ClassLoader classLoader) {
         Context ctx = XiaoLianModule.getAppContext();
         if (ctx != null && !io.github.yilink1.xiaolianplus.config.ModuleConfig.isWebviewDebugEnabled(ctx)) {
-            mModule.log(Log.INFO, TAG, "Webview debugging disabled by user config");
+            mModule.appLog(Log.INFO, TAG, "Webview debugging disabled by user config");
             return;
         }
 
         try {
             android.webkit.WebView.setWebContentsDebuggingEnabled(true);
-            mModule.log(Log.INFO, TAG, "Global Android WebView debugging enabled");
+            mModule.appLog(Log.INFO, TAG, "Global Android WebView debugging enabled");
         } catch (Throwable ignored) {
         }
 
@@ -168,7 +168,7 @@ public class WaterDispenserHooker {
                 Class<?> clazz = classLoader.loadClass(ucClass);
                 Method setDebug = clazz.getMethod("setWebContentsDebuggingEnabled", boolean.class);
                 setDebug.invoke(null, true);
-                mModule.log(Log.INFO, TAG, "Global UC/mPaaS WebView debugging enabled for " + ucClass);
+                mModule.appLog(Log.INFO, TAG, "Global UC/mPaaS WebView debugging enabled for " + ucClass);
             } catch (Throwable ignored) {
             }
         }
@@ -217,11 +217,11 @@ public class WaterDispenserHooker {
                         return res;
                     });
                 mHookLoadingDone = true;
-                mModule.log(Log.INFO, TAG, "Hooked H5LoadingDialog.show -> touch pass-through enabled!");
+                mModule.appLog(Log.INFO, TAG, "Hooked H5LoadingDialog.show -> touch pass-through enabled!");
             }
         } catch (ClassNotFoundException ignored) {
         } catch (Throwable t) {
-            mModule.log(Log.WARN, TAG, "Failed to hook H5LoadingDialog", t);
+            mModule.appLog(Log.WARN, TAG, "Failed to hook H5LoadingDialog", t);
         }
     }
 
@@ -240,7 +240,7 @@ public class WaterDispenserHooker {
                     android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                 );
                 window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-                mModule.log(Log.INFO, TAG, "Unlocked touch pass-through on Dialog: " + tag);
+                mModule.appLog(Log.INFO, TAG, "Unlocked touch pass-through on Dialog: " + tag);
             }
         } catch (Throwable ignored) {
         }
@@ -298,11 +298,11 @@ public class WaterDispenserHooker {
                 }
 
                 mHookMriverDone = true;
-                mModule.log(Log.INFO, TAG, "Hooked Mriver container Activity: " + actName);
+                mModule.appLog(Log.INFO, TAG, "Hooked Mriver container Activity: " + actName);
                 break;
             } catch (ClassNotFoundException ignored) {
             } catch (Throwable t) {
-                mModule.log(Log.WARN, TAG, "Failed to hook " + actName, t);
+                mModule.appLog(Log.WARN, TAG, "Failed to hook " + actName, t);
             }
         }
     }
@@ -319,7 +319,7 @@ public class WaterDispenserHooker {
                     View decor = activity.getWindow().getDecorView();
                     scanAndInject(decor, 0);
                 } catch (Throwable t) {
-                    mModule.log(Log.WARN, TAG, "Error during view tree scan", t);
+                    mModule.appLog(Log.WARN, TAG, "Error during view tree scan", t);
                 }
             }, delay);
         }
@@ -330,7 +330,7 @@ public class WaterDispenserHooker {
         String name = root.getClass().getName();
 
         if (isWebViewLike(root)) {
-            mModule.log(Log.INFO, TAG, "Found WebView in tree [depth " + depth + "]: " + name);
+            mModule.appLog(Log.INFO, TAG, "Found WebView in tree [depth " + depth + "]: " + name);
             inject(root);
         }
 
@@ -339,7 +339,7 @@ public class WaterDispenserHooker {
             Method getWebView = root.getClass().getMethod("getWebView");
             Object inner = getWebView.invoke(root);
             if (inner != null && isWebViewLike(inner)) {
-                mModule.log(Log.INFO, TAG, "Found inner WebView via getWebView(): " + inner.getClass().getName());
+                mModule.appLog(Log.INFO, TAG, "Found inner WebView via getWebView(): " + inner.getClass().getName());
                 inject(inner);
             }
         } catch (Throwable ignored) {
@@ -397,9 +397,9 @@ public class WaterDispenserHooker {
                     return res;
                 });
             mHookSystemDone = true;
-            mModule.log(Log.INFO, TAG, "Hooked android.webkit.WebViewClient.onPageFinished");
+            mModule.appLog(Log.INFO, TAG, "Hooked android.webkit.WebViewClient.onPageFinished");
         } catch (Throwable t) {
-            mModule.log(Log.WARN, TAG, "Failed to hook system WebViewClient", t);
+            mModule.appLog(Log.WARN, TAG, "Failed to hook system WebViewClient", t);
         }
     }
 
@@ -422,11 +422,11 @@ public class WaterDispenserHooker {
                         return res;
                     });
                 mHookUcDone = true;
-                mModule.log(Log.INFO, TAG, "Hooked UC WebViewClient.onPageFinished");
+                mModule.appLog(Log.INFO, TAG, "Hooked UC WebViewClient.onPageFinished");
             }
         } catch (ClassNotFoundException ignored) {
         } catch (Throwable t) {
-            mModule.log(Log.WARN, TAG, "Failed to hook UC WebViewClient", t);
+            mModule.appLog(Log.WARN, TAG, "Failed to hook UC WebViewClient", t);
         }
     }
 
@@ -460,7 +460,7 @@ public class WaterDispenserHooker {
                             }
                             return res;
                         });
-                    mModule.log(Log.INFO, TAG, "Hooked onAttachedToWindow on " + clsName);
+                    mModule.appLog(Log.INFO, TAG, "Hooked onAttachedToWindow on " + clsName);
                 }
             } catch (Throwable ignored) {
             }
@@ -480,7 +480,7 @@ public class WaterDispenserHooker {
             return; // 已经为该实例调度过阶梯注入，防止重复开启多组定时器
         }
 
-        mModule.log(Log.INFO, TAG, "New WebView attached to window, scheduling debounced inject: " + view.getClass().getName());
+        mModule.appLog(Log.INFO, TAG, "New WebView attached to window, scheduling debounced inject: " + view.getClass().getName());
         long[] delays = { 50, 200, 600, 1500 };
         for (long delay : delays) {
             mMainHandler.postDelayed(() -> {
@@ -566,14 +566,14 @@ public class WaterDispenserHooker {
                 }
 
             } catch (Throwable t) {
-                mModule.log(Log.WARN, TAG, "Failed to inject script into " + webView.getClass().getName(), t);
+                mModule.appLog(Log.WARN, TAG, "Failed to inject script into " + webView.getClass().getName(), t);
             }
         });
     }
 
     private void logInjectedOnce(Object webView, String method) {
         if (mInjectedWebViews.add(webView)) {
-            mModule.log(Log.INFO, TAG, "Successfully injected water dispenser JS into " + webView.getClass().getName() + " via " + method);
+            mModule.appLog(Log.INFO, TAG, "Successfully injected water dispenser JS into " + webView.getClass().getName() + " via " + method);
         }
     }
 

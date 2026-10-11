@@ -127,10 +127,10 @@ public class XiaoLianModule extends XposedModule {
 
                     if (targetCl != null) {
                         if (!mHooked) {
-                            log(Log.INFO, TAG, "ContextWrapper.attachBaseContext completed, attempting hookSplash...");
+                            appLog(Log.INFO, TAG, "ContextWrapper.attachBaseContext completed, attempting hookSplash...");
                             boolean success = tryHookSplash(targetCl);
                             if (success) {
-                                log(Log.INFO, TAG, "Splash hook applied in attachBaseContext!");
+                                appLog(Log.INFO, TAG, "Splash hook applied in attachBaseContext!");
                             }
                         }
                         tryHookWaterDispenser(targetCl);
@@ -141,7 +141,7 @@ public class XiaoLianModule extends XposedModule {
                     return result;
                 });
 
-            log(Log.INFO, TAG, "ContextWrapper.attachBaseContext hook installed successfully");
+            appLog(Log.INFO, TAG, "ContextWrapper.attachBaseContext hook installed successfully");
         } catch (Throwable t) {
             log(Log.ERROR, TAG, "Failed to hook ContextWrapper.attachBaseContext", t);
         }
@@ -172,19 +172,19 @@ public class XiaoLianModule extends XposedModule {
                             SplashStartHooker.sCurrentSplashActivity = new WeakReference<>(activity);
 
                             if (!mHooked) {
-                                log(Log.INFO, TAG, "Detected SplashActivity instance launched: " + className);
+                                appLog(Log.INFO, TAG, "Detected SplashActivity instance launched: " + className);
                                 boolean success = tryHookSplash(activity.getClass().getClassLoader());
                                 if (success) {
-                                    log(Log.INFO, TAG, "Splash hook applied dynamically on Activity launch!");
+                                    appLog(Log.INFO, TAG, "Splash hook applied dynamically on Activity launch!");
                                 }
                             }
                         } else if (className.contains("MriverActivity") || className.contains("Mriver")) {
-                            log(Log.INFO, TAG, "Detected MriverActivity launched: " + className);
+                            appLog(Log.INFO, TAG, "Detected MriverActivity launched: " + className);
                             if (mWaterHooker != null) {
                                 mWaterHooker.onMriverActivityCreated(activity);
                             }
                         } else if (className.contains("HomeActivity")) {
-                            log(Log.INFO, TAG, "Detected HomeActivity launched: " + className);
+                            appLog(Log.INFO, TAG, "Detected HomeActivity launched: " + className);
                             checkHostVersion(activity);
                             if (mMinePageHooker != null) {
                                 mMinePageHooker.onHomeActivityCreated(activity);
@@ -197,7 +197,7 @@ public class XiaoLianModule extends XposedModule {
                     return chain.proceed();
                 });
 
-            log(Log.INFO, TAG, "Instrumentation.callActivityOnCreate hook installed successfully");
+            appLog(Log.INFO, TAG, "Instrumentation.callActivityOnCreate hook installed successfully");
         } catch (Throwable t) {
             log(Log.ERROR, TAG, "Failed to hook Instrumentation.callActivityOnCreate", t);
         }
@@ -208,7 +208,7 @@ public class XiaoLianModule extends XposedModule {
         try {
             mDirectLaunchHooker.initHooks(classLoader);
         } catch (Throwable t) {
-            log(Log.WARN, TAG, "Failed to init DirectLaunchHooker", t);
+            appLog(Log.WARN, TAG, "Failed to init DirectLaunchHooker", t);
         }
     }
 
@@ -217,7 +217,7 @@ public class XiaoLianModule extends XposedModule {
         try {
             mMinePageHooker.initHooks(classLoader);
         } catch (Throwable t) {
-            log(Log.WARN, TAG, "Failed to init MinePageHooker", t);
+            appLog(Log.WARN, TAG, "Failed to init MinePageHooker", t);
         }
     }
 
@@ -228,9 +228,9 @@ public class XiaoLianModule extends XposedModule {
         try {
             mWaterHooker.initHooks(classLoader);
             mWaterHooked = true;
-            log(Log.INFO, TAG, "WaterDispenser hooks installed successfully!");
+            appLog(Log.INFO, TAG, "WaterDispenser hooks installed successfully!");
         } catch (Throwable t) {
-            log(Log.WARN, TAG, "Failed to initialize WaterDispenser hooks", t);
+            appLog(Log.WARN, TAG, "Failed to initialize WaterDispenser hooks", t);
         }
     }
 
@@ -281,14 +281,14 @@ public class XiaoLianModule extends XposedModule {
                     .intercept(new SplashAdHooker(this, normalSplashMethod));
 
                 mHooked = true;
-                log(Log.INFO, TAG, "Hook installed successfully on: " + advSplashMethod);
+                appLog(Log.INFO, TAG, "Hook installed successfully on: " + advSplashMethod);
 
                 // 3. 挂载加速器：包括源头拦截 (SplashPresenter.splashStart) 与延时压缩 (Timer.schedule)
                 hookSplashAccelerators(classLoader, normalSplashMethod);
 
                 return true;
             } else {
-                log(Log.WARN, TAG, "Method showAdvSplash(1 param) not found on hierarchy of " + splashClass.getName());
+                appLog(Log.WARN, TAG, "Method showAdvSplash(1 param) not found on hierarchy of " + splashClass.getName());
             }
 
         } catch (Throwable t) {
@@ -313,9 +313,9 @@ public class XiaoLianModule extends XposedModule {
                 .setPriority(XposedInterface.PRIORITY_HIGHEST)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(new SplashDelayHooker.TimerScheduleHooker(this));
-            log(Log.INFO, TAG, "Timer.schedule accelerator hook installed successfully");
+            appLog(Log.INFO, TAG, "Timer.schedule accelerator hook installed successfully");
         } catch (Throwable t) {
-            log(Log.WARN, TAG, "Failed to hook Timer.schedule", t);
+            appLog(Log.WARN, TAG, "Failed to hook Timer.schedule", t);
         }
 
         // (2) Hook SplashPresenter 方法群
@@ -342,13 +342,13 @@ public class XiaoLianModule extends XposedModule {
                             .setPriority(XposedInterface.PRIORITY_HIGHEST)
                             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                             .intercept(new SplashStartHooker(this, normalSplashMethod));
-                        log(Log.INFO, TAG, "Hooked SplashPresenter.splashStart (Source 0s Accelerator) on: " + pName);
+                        appLog(Log.INFO, TAG, "Hooked SplashPresenter.splashStart (Source 0s Accelerator) on: " + pName);
                     } else {
                         StringBuilder sb = new StringBuilder("SplashPresenter methods: ");
                         for (Method m : pClass.getDeclaredMethods()) {
                             sb.append(m.getName()).append("(").append(m.getParameterCount()).append("), ");
                         }
-                        log(Log.INFO, TAG, sb.toString());
+                        appLog(Log.INFO, TAG, sb.toString());
                     }
 
                     // B. L3 延时拦截：Hook splashDelay() 哨兵
@@ -359,7 +359,7 @@ public class XiaoLianModule extends XposedModule {
                             .setPriority(XposedInterface.PRIORITY_HIGHEST)
                             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                             .intercept(new SplashDelayHooker(this));
-                        log(Log.INFO, TAG, "Hooked SplashPresenter.splashDelay on: " + pName);
+                        appLog(Log.INFO, TAG, "Hooked SplashPresenter.splashDelay on: " + pName);
                     }
 
                     break;
@@ -367,7 +367,7 @@ public class XiaoLianModule extends XposedModule {
                 }
             }
         } catch (Throwable t) {
-            log(Log.WARN, TAG, "Failed to hook SplashPresenter methods", t);
+            appLog(Log.WARN, TAG, "Failed to hook SplashPresenter methods", t);
         }
     }
 
@@ -447,5 +447,22 @@ public class XiaoLianModule extends XposedModule {
         } catch (Throwable ignored) {
         }
         return false;
+    }
+
+    public void appLog(int priority, String tag, String msg) {
+        appLog(priority, tag, msg, null);
+    }
+
+    public void appLog(int priority, String tag, String msg, Throwable tr) {
+        if (priority >= Log.ERROR) {
+            if (tr != null) log(priority, tag, msg, tr);
+            else log(priority, tag, msg);
+            return;
+        }
+        Context ctx = sAppContext;
+        if (ctx != null && io.github.yilink1.xiaolianplus.config.ModuleConfig.isVerboseLogEnabled(ctx)) {
+            if (tr != null) log(priority, tag, msg, tr);
+            else log(priority, tag, msg);
+        }
     }
 }
