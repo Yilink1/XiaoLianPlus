@@ -39,9 +39,10 @@
           try {
             const str = typeof param.data === 'string' ? param.data : JSON.stringify(param.data);
             if (XL_DEBUG) {
-              const m = str.match(/"a"\s*:\s*\[\s*"([^"]+)"/);
-              xlLog('bridge> ' + (m ? m[1] : str.slice(0, 40)));
+              const m = str.match(/"a"\s*:\s*\[\s*(?:"([^"]+)"|(\d+)\s*,\s*"([^"]+)")/);
+              xlLog('bridge> ' + (m ? (m[1] || (m[2] + ':' + m[3])) : str.slice(0, 40)));
             }
+            captureRecordFromMessage(str, param);
             if (str.includes('"toSelectBuilding"')) {
               // 补发后 1.2 秒内，渲染层迟到的原始消息丢弃，避免重复打开选楼页
               if (!window.__xl_replaying && Date.now() - (window.__xl_replay_time || 0) < 1200) {
@@ -84,6 +85,54 @@
   const setAliases = (m) => localStorage.setItem(ALIAS_KEY, JSON.stringify(m));
   const getCachedRecords = () => { try { return JSON.parse(localStorage.getItem(RECORD_CACHE_KEY) || '{}'); } catch (e) { return {}; } };
   const saveCachedRecords = (c) => localStorage.setItem(RECORD_CACHE_KEY, JSON.stringify(c));
+
+  // —— 机位参数的“框架无关”采集：用户在原生列表里点一台机器时，渲染层会发出带 dataset.record 的 tap 消息，
+  // 直接从桥消息里记下 record 和事件名。联网机（React 渲染，能从 fiber 取）与公共机（取不到 fiber）都适用，
+  // 且拿到的是宿主自己发出的真实数据，格式不会错。
+  const SELECT_EVENT_KEY = 'xl_select_event';
+  const TAP_MSG_KEY = 'xl_tap_msgs';
+  const getTapMsgs = () => { try { return JSON.parse(localStorage.getItem(TAP_MSG_KEY) || '{}'); } catch (e) { return {}; } };
+
+  // 在 dataset 里找“机位记录”：键名不一定叫 record（公共机页面可能不同），任何带 deviceName 的对象都算
+  function findRecordIn(ds) {
+    if (!ds || typeof ds !== 'object') return null;
+    if (ds.record && ds.record.deviceName) return ds.record;
+    for (const k in ds) {
+      const v = ds[k];
+      if (v && typeof v === 'object' && v.deviceName) return v;
+    }
+    return null;
+  }
+
+  // 渲染层 → 逻辑层的两种消息：
+  //   onRenderEvent          a = [事件名, 事件对象]            （联网机的 selectDevice / start 等）
+  //   onComponentRenderEvent a = [组件id, 事件名, 事件对象]    （公共机的卡片点击走这条，调试条里显示成 “6:onTap” 这种）
+  function captureRecordFromMessage(str, param) {
+    if (window.__xl_self_send) return;           // 自己发出的消息不采集，避免自我污染
+    if (str.indexOf('deviceName') === -1) return;
+    try {
+      const outer = JSON.parse(str);
+      const d = outer && (typeof outer.data === 'string' ? JSON.parse(outer.data) : outer.data);
+      if (!d || !Array.isArray(d.a)) return;
+      let name, ev;
+      if (typeof d.a[0] === 'string') { name = d.a[0]; ev = d.a[1] || {}; }
+      else { name = d.a[1]; ev = d.a[2] || {}; }
+      if (typeof name !== 'string') return;
+      const rec = findRecordIn(ev.currentTarget && ev.currentTarget.dataset) || findRecordIn(ev.target && ev.target.dataset);
+      if (!rec || !rec.deviceName) return;
+      const cache = getCachedRecords();
+      cache[rec.deviceName] = rec;
+      saveCachedRecords(cache);
+      if (typeof d.a[0] === 'string') localStorage.setItem(SELECT_EVENT_KEY, name);
+      // 真实“点击”消息整条存下来（公共机跨楼栋收藏用它原样补发）
+      if (ev.type === 'tap') {
+        const msgs = getTapMsgs();
+        msgs[rec.deviceName] = param;
+        localStorage.setItem(TAP_MSG_KEY, JSON.stringify(msgs));
+      }
+      xlLog('capture ' + rec.deviceName + ' via ' + name + ' type=' + ev.type);
+    } catch (e) {}
+  }
 
   // 特征隔离：真饮水机卡片必须具备 .single-left 和 .single-right
   function isDispenserCard(el) {
@@ -415,25 +464,90 @@
   }
 
   function jumpToDrinkWater(record) {
+    let evName = 'selectDevice';
+    try { evName = localStorage.getItem(SELECT_EVENT_KEY) || evName; } catch (e) {}
     if (!window.AlipayJSBridge) {
       alert('底层通讯通道未就绪，请稍后重试');
       return;
     }
-    window.AlipayJSBridge.call('postMessage', {
-      type: 'messagePort',
-      msgPortId: 2,
-      data: JSON.stringify({
-        data: {
-          c: 'page',
-          m: 'onRenderEvent',
-          a: ['selectDevice', {
-            type: 'tap',
-            target: { dataset: { record: record } },
-            currentTarget: { dataset: { record: record } }
-          }]
+    window.__xl_self_send = true;
+    try {
+      window.AlipayJSBridge.call('postMessage', {
+        type: 'messagePort',
+        msgPortId: 2,
+        data: JSON.stringify({
+          data: {
+            c: 'page',
+            m: 'onRenderEvent',
+            a: [evName, {
+              type: 'tap',
+              target: { dataset: { record: record } },
+              currentTarget: { dataset: { record: record } }
+            }]
+          }
+        })
+      });
+    } finally { window.__xl_self_send = false; }
+  }
+
+  // 把之前真点过的那台机器的 tap 消息原样补发（公共机：事件走 onComponentRenderEvent，没法凭空构造）
+  function replayCapturedTap(rawName) {
+    const p = getTapMsgs()[rawName];
+    if (!p || !window.AlipayJSBridge) return false;
+    window.__xl_self_send = true;
+    try { window.AlipayJSBridge.call('postMessage', JSON.parse(JSON.stringify(p))); } finally { window.__xl_self_send = false; }
+    return true;
+  }
+
+  // 没有缓存的 record 时的兜底：在（全收藏模式下被隐藏的）原生列表里找到同名卡片，替用户真点一下。
+  // 走的是宿主自己的点击处理，参数、事件名都由宿主决定，不依赖我们猜的格式。
+  function fireTouch(el, type, x, y) {
+    let ev;
+    try {
+      const t = new Touch({ identifier: 1, target: el, clientX: x, clientY: y, pageX: x, pageY: y, screenX: x, screenY: y });
+      const list = type === 'touchend' ? [] : [t];
+      ev = new TouchEvent(type, { bubbles: true, cancelable: true, composed: true, touches: list, targetTouches: list, changedTouches: [t] });
+    } catch (e) {
+      ev = new Event(type, { bubbles: true, cancelable: true, composed: true });
+      const t = { identifier: 1, target: el, clientX: x, clientY: y, pageX: x, pageY: y, screenX: x, screenY: y };
+      const arr = type === 'touchend' ? [] : [t];
+      ev.touches = arr; ev.targetTouches = arr; ev.changedTouches = [t];
+    }
+    el.dispatchEvent(ev);
+  }
+
+  function replayNativeTap(rawName, coordSource) {
+    const native = Array.from(document.querySelectorAll('div.single'))
+      .find(c => !c.closest('#xl-fav-native-view') && isDispenserCard(c) && nameOf(c) === rawName);
+    if (!native) return false;
+    // 借用当前被点击卡片或点击事件的有效视口坐标
+    let clientX = window.innerWidth / 2;
+    let clientY = window.innerHeight / 2;
+    if (coordSource) {
+      if (typeof coordSource.clientX === 'number' && coordSource.clientX > 0) {
+        clientX = coordSource.clientX;
+        clientY = coordSource.clientY;
+      } else if (coordSource.getBoundingClientRect) {
+        const cr = coordSource.getBoundingClientRect();
+        if (cr.width > 0 && cr.height > 0) {
+          clientX = cr.left + cr.width / 2;
+          clientY = cr.top + cr.height / 2;
         }
-      })
-    });
+      }
+    }
+
+    try {
+      const t = new Touch({ identifier: Date.now(), target: native, clientX: clientX, clientY: clientY, pageX: clientX, pageY: clientY });
+      native.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [t], targetTouches: [t], changedTouches: [t] }));
+
+      setTimeout(() => {
+        native.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [t] }));
+        native.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: clientX, clientY: clientY }));
+      }, 50);
+    } catch (e) {
+      try { native.click(); } catch (e2) {}
+    }
+    return true;
   }
 
   // ───────── 9. 并行独立全收藏视图渲染 (#xl-fav-native-view) ─────────
@@ -453,7 +567,6 @@
     }
 
     const favs = getFavs();
-    const records = getCachedRecords();
     const aliases = getAliases();
 
     favView.innerHTML = '';
@@ -491,10 +604,24 @@
           if (Date.now() - (window.__xl_last_star_tap_time || 0) < 800) return;
           if (Date.now() - (window.__xl_global_last_touch_time || 0) < 800) return;
 
-          const rec = records[rawName];
-          if (rec) {
+          const isPublic = location.href.includes('publicRoom') || location.hash.includes('publicRoom');
+          const rec = getCachedRecords()[rawName];
+          xlLog('fav tap public=' + isPublic + ' rec=' + !!rec);
+          // 联网机：已验证 selectDevice 能直达，优先用缓存。
+          // 公共机：卡片点击走 onComponentRenderEvent，selectDevice 会被忽略（实测日志：发出了但不跳转），
+          //         所以优先在原生列表里替用户真点一下；没有原生卡片（跨楼栋）才补发之前真点时记下的整条 tap 消息。
+          if (!isPublic && rec) {
+            xlLog('fav jump: cache ' + rawName);
+            jumpToDrinkWater(rec);
+          } else if (replayNativeTap(rawName, e || card)) {
+            xlLog('fav jump: replay native tap ' + rawName);
+          } else if (replayCapturedTap(rawName)) {
+            xlLog('fav jump: replay captured tap ' + rawName);
+          } else if (rec) {
+            xlLog('fav jump: cache(fallback) ' + rawName);
             jumpToDrinkWater(rec);
           } else {
+            xlLog('fav jump: no record, no native card ' + rawName);
             alert(`【${rawName}】是跨楼栋水机，由于首次使用尚未缓存机位参数，请先切换到该楼栋浏览一次，后续即可永久免切换直达！`);
           }
         };
