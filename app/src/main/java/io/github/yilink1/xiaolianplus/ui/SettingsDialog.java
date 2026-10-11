@@ -186,21 +186,21 @@ public class SettingsDialog {
             LinearLayout themeRow = new LinearLayout(context);
             themeRow.setOrientation(LinearLayout.HORIZONTAL);
             themeRow.setGravity(Gravity.CENTER_VERTICAL);
-            themeRow.setPadding(0, dp2px(context, 8), 0, dp2px(context, 8));
+            themeRow.setPadding(0, dp12, 0, dp12);
 
             LinearLayout themeTexts = new LinearLayout(context);
             themeTexts.setOrientation(LinearLayout.VERTICAL);
 
             TextView tvThemeTitle = new TextView(context);
             tvThemeTitle.setText("长按按钮主题");
-            tvThemeTitle.setTextSize(15);
+            tvThemeTitle.setTextSize(14);
             tvThemeTitle.setTextColor(Color.parseColor("#262626"));
             tvThemeTitle.getPaint().setFakeBoldText(true);
             themeTexts.addView(tvThemeTitle);
 
             TextView tvThemeDesc = new TextView(context);
             tvThemeDesc.setText("结算时长按按钮的外观，点击可预览并选择");
-            tvThemeDesc.setTextSize(12);
+            tvThemeDesc.setTextSize(11);
             tvThemeDesc.setTextColor(Color.parseColor("#8c8c8c"));
             tvThemeDesc.setPadding(0, dp2px(context, 2), 0, 0);
             themeTexts.addView(tvThemeDesc);
