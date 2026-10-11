@@ -260,8 +260,9 @@
   // 弹窗静态压制：样式在弹窗节点插入之前就存在，首帧即不可见（JS 事后加 class 总会晚几帧）。
   // 用 clip-path 而不是 opacity/visibility：只影响绘制，节点的 opacity/visibility/尺寸仍反映宿主真实状态，
   // “弹窗是否真的打开”的检测不受影响。仅在打水页生效，离开后撤掉，不影响其他页面的弹窗。
+  // 同时兼容：联网水机（.l-message-*）与 公共水机（.x-alert*, .u-drawer*, .u-mask*）
   var popupHide = toggleStyle('xl-dw-popup-hide',
-    '.l-message-container,.l-message-cover{clip-path:inset(100%) !important;pointer-events:none !important;}');
+    '.l-message-container,.l-message-cover,.x-alert,.x-alert__wrapper,.u-drawer{clip-path:inset(100%) !important;pointer-events:none !important;}');
 
   // hold 模式：原生滑块子节点从首帧起淡出（保留尺寸，合成事件直接派发给它，不受影响）
   var holdHide = toggleStyle('xl-dw-hold-hide', '.sliders>*:not(.xl-dw-pill){opacity:0 !important;}');
@@ -281,10 +282,17 @@
   // 页面判定：以“可见的页面特征”为准（SPA 里 URL 不一定随页面变化）
   //   .sliders 可见（已开始使用），或“开始使用”主按钮可见（待开始）
   // =====================================================================
+  // “开始使用”按钮：不再死认 .a-button.btn（公共水机页的结构可能不同），
+  // 以“可点击类节点 + 文本以“开始使用”开头且很短”为准。
+  var START_SEL = '.a-button, button, [class*="btn"], [role="button"], [data-clickable="true"]';
+  function isStartText(el) {
+    var t = (el.textContent || '').replace(/\s+/g, '');
+    return t.length <= 30 && t.indexOf('开始使用') === 0;
+  }
   function startBtnShown() {
-    var btns = document.querySelectorAll('.a-button.btn');
+    var btns = document.querySelectorAll(START_SEL);
     for (var i = 0; i < btns.length; i++) {
-      if (/开始使用/.test(btns[i].textContent || '') && isShown(btns[i])) return true;
+      if (isStartText(btns[i]) && isShown(btns[i])) return true;
     }
     return false;
   }
@@ -292,43 +300,65 @@
     var s = document.querySelector('.sliders');
     return !!(s && isShown(s));
   }
-  function onTargetPage() { return slidersShown() || startBtnShown(); }
+  function onTargetPage() { return slidersShown() || startBtnShown() || popup.armedUntil > now(); }
   // “待开始”阶段：开始按钮可见且还没出现滑块。自动确认只在这个阶段生效
-  function startPhase() { return !slidersShown() && startBtnShown(); }
+  function startPhase() { return !slidersShown() && (startBtnShown() || popup.armedUntil > now()); }
 
   // =====================================================================
   // 功能 1：自动确认（点“开始使用”后武装 → 窗口内弹出的确认弹窗点一次 → 用完即失效）
   // =====================================================================
-  var popup = { armedUntil: 0, armTimer: 0, fired: false, forceReveal: false };
+  var popup = { armedUntil: 0, armTimer: 0, fired: false, forceReveal: false, lastFireAt: -1e9, lastArmLog: 0 };
+
+  // 弹窗是否已完全淡入：淡入是 CSS transition，不产生 DOM 变动，太早点（opacity 还在 0~1 之间）偶尔会点空
+  function fullyOpaque(el) {
+    var o = 1;
+    for (var n = el; n && n !== document.documentElement; n = n.parentElement) {
+      var v = parseFloat(getComputedStyle(n).opacity);
+      if (!isNaN(v)) o *= v;
+    }
+    return o >= 0.98;
+  }
 
   function isConfirmText(el) {
     return (el.textContent || '').replace(/\s+/g, '') === '确认';
   }
 
-  function findConfirmBtn() {
-    var cands = document.querySelectorAll('.l-message-ok, [data-clickable="true"]');
-    for (var i = 0; i < cands.length; i++) {
-      var el = cands[i];
-      if (!isConfirmText(el)) continue;
-      // 实测确认按钮是 .l-message-ok；data-clickable 只表示“绑了 tap”，所以非 .l-message-ok 的必须在弹窗容器内
-      if (!el.classList.contains('l-message-ok') && !el.closest('.l-message-box, .l-message-mask, .l-message-container')) continue;
-      if (!isShown(el)) continue;
-      return el;
+  // 弹窗容器：联网水机（.l-message-*）与公共水机（.x-alert*, .u-drawer*）以及通用 dialog/modal。
+  // 确认按钮只在这些容器里找——页面其他位置的“确认”文字不会被碰。
+  var POPUP_SEL = '.l-message-container, .l-message-box, .l-message-cover, .x-alert, [class*="x-alert"], .u-drawer, [class*="u-drawer"], [role="dialog"], [class*="modal"], [class*="dialog"]';
+
+  function isLeafWithText(el, re) {
+    return el.children.length === 0 && re.test((el.textContent || '').replace(/\s+/g, ''));
+  }
+  // 弹窗容器里的叶子文字节点 -> 向上取按钮（或自身）。pred 决定匹配哪种文字
+  function findPopupBtn(re) {
+    var boxes = document.querySelectorAll(POPUP_SEL);
+    for (var i = 0; i < boxes.length; i++) {
+      var leaves = boxes[i].querySelectorAll('*');
+      for (var j = 0; j < leaves.length; j++) {
+        var el = leaves[j];
+        if (!isLeafWithText(el, re)) continue;
+        var btn = el.closest('button, [role="button"], [data-clickable="true"], [class*="btn"], [class*="button"], .l-message-ok') || el;
+        if (isShown(btn) && btn.offsetHeight > 0) return btn;
+      }
     }
     return null;
   }
+  function findConfirmBtn() { return findPopupBtn(/^确认$/); }
 
-  // 出现了别的弹窗（按钮不是“确认”，如报错提示）：别压制它，让用户看得到
-  function otherPopupShown() {
-    var oks = document.querySelectorAll('.l-message-ok');
-    for (var k = 0; k < oks.length; k++) {
-      if (!isConfirmText(oks[k]) && isShown(oks[k])) return true;
-    }
-    return false;
-  }
+  // 出现了别的弹窗（按钮是“确定/知道了”等，如报错提示）：别压制它，让用户看得到
+  function otherPopupShown() { return !!findPopupBtn(/^(确定|知道了|我知道了|好的|重试|关闭)$/); }
 
+  // 取最外层的弹窗容器（内层 footer/wrapper 的 class 也可能命中，取它们会拿不到正文）
   function popupBody(btn) {
-    return btn.closest('.l-message-body, .l-message-container');
+    if (!btn) return null;
+    var box = btn.closest(POPUP_SEL);
+    while (box && box.parentElement && box.parentElement.closest) {
+      var up = box.parentElement.closest(POPUP_SEL);
+      if (!up) break;
+      box = up;
+    }
+    return box || btn.parentElement;
   }
   function bodyMatches(btn) {
     if (!CONFIG.confirmBodyPattern) return true;
@@ -339,6 +369,7 @@
   function fireConfirm(btn) {
     popup.armedUntil = 0;     // 先“用掉”武装再派发：任何重入路径都不会二次触发
     popup.fired = true;
+    popup.lastFireAt = now();
     var body = popupBody(btn);
     log('自动确认弹窗正文：', body ? (body.textContent || '').replace(/\s+/g, ' ').trim() : '(未取到)');
     try {
@@ -363,8 +394,14 @@
     var open = !!btn;
     if (!open) { popup.forceReveal = false; popup.fired = false; }
     var armed = popup.armedUntil > 0;
-    // 只有：已武装 + 待开始阶段 + 弹窗已打开 + 还没点过 + 正文符合（若配置了）才点
-    if (armed && open && !popup.fired && bodyMatches(btn)) fireConfirm(btn);
+    // 武装且弹窗已出现且完全淡入后再点（淡入是 CSS 过渡，太早点偶尔点空；弹窗被压制着，多等几十毫秒用户看不到）
+    var fallback = !armed && open && !!CONFIG.confirmBodyPattern && startBtnShown() && now() - popup.lastFireAt > 3000;
+    if ((armed || fallback) && open && !popup.fired && bodyMatches(btn) && fullyOpaque(btn)) {
+      if (!armed) log('兜底触发：未武装但检测到开始使用的确认弹窗');
+      fireConfirm(btn);
+    }
+    // 武装期内、还没点过：逐帧复查直至点完/过期（淡入不产生 DOM 变动，不能只靠观察者）
+    if (popup.armedUntil > 0 && !popup.fired && !slidersShown()) raf(schedule);
     // 静态压制只在武装期间（以及点完到弹窗关闭之前）存在；别的弹窗（含非“确认”按钮的）一律不压制
     var foreign = active && otherPopupShown();
     popupHide.set(active && (popup.armedUntil > 0 || popup.fired) && !foreign && !popup.forceReveal);
@@ -373,14 +410,26 @@
   // 用户亲手点了“开始使用”：武装，并同步压制（赶在弹窗首帧之前，不能等 rAF 扫描）
   function onUserTap(e) {
     if (disposed || !CONFIG.autoConfirm) return;
-    var t = e.target;
-    var b = t && t.closest && t.closest('.a-button.btn');
-    if (!b || !/开始使用/.test(b.textContent || '')) return;
+    var tg = e.target;
+    // 弹窗内的点击（含我们自己派发的确认）不武装
+    if (!tg || tg.nodeType !== 1 || (tg.closest && tg.closest('.l-message-container, .l-message-box, .l-message-cover, .x-alert, [class*="x-alert"], .u-drawer, [class*="u-drawer"]'))) return;
+    var tt = (tg.textContent || '').replace(/\s+/g, '');
+    if (!tt) return;
+    var b = null;
+    for (var n = tg, d = 0; n && n.nodeType === 1 && d < 6; n = n.parentElement, d++) {
+      var nt = (n.textContent || '').replace(/\s+/g, '');
+      if (nt.length > tt.length + 12) break;       // 祖先文本明显比被点节点多：已经是大容器，不是按钮
+      if (isStartText(n)) { b = n; break; }
+    }
+    if (!b) return;
     popup.armedUntil = now() + CONFIG.confirmArmMs;
     popupHide.set(true);
     clearTimeout(popup.armTimer);
     popup.armTimer = setTimeout(schedule, CONFIG.confirmArmMs + 50);   // 到期后重扫一次，撤掉压制
-    log('已武装自动确认', CONFIG.confirmArmMs + 'ms');
+    if (!popup.lastArmLog || now() - popup.lastArmLog > 300) {
+      popup.lastArmLog = now();
+      log('已武装自动确认', CONFIG.confirmArmMs + 'ms', '目标=' + b.tagName.toLowerCase() + '.' + String(b.className).replace(/\s+/g, '.'));
+    }
   }
 
   // =====================================================================
@@ -772,8 +821,8 @@
     winEvents.forEach(function (n) { window.addEventListener(n, schedule); });
     document.addEventListener('visibilitychange', onVisible);
     if (CONFIG.autoConfirm) {
-      document.addEventListener('touchend', onUserTap, true);   // 捕获阶段：先于页面自己的处理
-      document.addEventListener('click', onUserTap, true);
+      // 捕获阶段、挂在 window 上：最早拿到事件；touchstart 也武装（touchend/click 被吞时仍能接上）
+      ['touchstart', 'touchend', 'click'].forEach(function (n) { window.addEventListener(n, onUserTap, true); });
     }
     scan();
     log('已启动', 'autoConfirm=' + CONFIG.autoConfirm, 'mode=' + CONFIG.mode, 'theme=' + CONFIG.theme);
@@ -784,8 +833,7 @@
     observer.disconnect();
     winEvents.forEach(function (n) { window.removeEventListener(n, schedule); });
     document.removeEventListener('visibilitychange', onVisible);
-    document.removeEventListener('touchend', onUserTap, true);
-    document.removeEventListener('click', onUserTap, true);
+    ['touchstart', 'touchend', 'click'].forEach(function (n) { window.removeEventListener(n, onUserTap, true); });
     clearTimeout(popup.armTimer);
     if (hold) { hold.destroy(); hold = null; }
     popupHide.set(false);
