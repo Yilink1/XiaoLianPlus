@@ -520,6 +520,7 @@
     const native = Array.from(document.querySelectorAll('div.single'))
       .find(c => !c.closest('#xl-fav-native-view') && isDispenserCard(c) && nameOf(c) === rawName);
     if (!native) return false;
+    const target = native.querySelector('.single-title') || native;
     // 借用当前被点击卡片或点击事件的有效视口坐标
     let clientX = window.innerWidth / 2;
     let clientY = window.innerHeight / 2;
@@ -537,15 +538,15 @@
     }
 
     try {
-      const t = new Touch({ identifier: Date.now(), target: native, clientX: clientX, clientY: clientY, pageX: clientX, pageY: clientY });
-      native.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [t], targetTouches: [t], changedTouches: [t] }));
+      const t = new Touch({ identifier: Date.now(), target: target, clientX: clientX, clientY: clientY, pageX: clientX, pageY: clientY });
+      target.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [t], targetTouches: [t], changedTouches: [t] }));
 
       setTimeout(() => {
-        native.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [t] }));
-        native.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: clientX, clientY: clientY }));
+        target.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [t] }));
+        target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: clientX, clientY: clientY }));
       }, 50);
     } catch (e) {
-      try { native.click(); } catch (e2) {}
+      try { target.click(); } catch (e2) {}
     }
     return true;
   }
