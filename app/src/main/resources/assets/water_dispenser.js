@@ -516,38 +516,41 @@
     el.dispatchEvent(ev);
   }
 
-  function replayNativeTap(rawName, coordSource) {
+  let lastReplayTapTime = 0;
+  function replayNativeTap(rawName, cardEl) {
+    if (Date.now() - lastReplayTapTime < 1000) return true;
     const native = Array.from(document.querySelectorAll('div.single'))
       .find(c => !c.closest('#xl-fav-native-view') && isDispenserCard(c) && nameOf(c) === rawName);
     if (!native) return false;
-    const target = native.querySelector('.single-title') || native;
-    // 借用当前被点击卡片或点击事件的有效视口坐标
+    lastReplayTapTime = Date.now();
+
+    // 坐标取可见卡片的真实几何中心，避免手指偏折或边缘落点
     let clientX = window.innerWidth / 2;
     let clientY = window.innerHeight / 2;
-    if (coordSource) {
-      if (typeof coordSource.clientX === 'number' && coordSource.clientX > 0) {
-        clientX = coordSource.clientX;
-        clientY = coordSource.clientY;
-      } else if (coordSource.getBoundingClientRect) {
-        const cr = coordSource.getBoundingClientRect();
-        if (cr.width > 0 && cr.height > 0) {
-          clientX = cr.left + cr.width / 2;
-          clientY = cr.top + cr.height / 2;
-        }
-      }
-    }
-
+    const el = (cardEl && cardEl.getBoundingClientRect) ? cardEl : native;
     try {
-      const t = new Touch({ identifier: Date.now(), target: target, clientX: clientX, clientY: clientY, pageX: clientX, pageY: clientY });
-      target.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [t], targetTouches: [t], changedTouches: [t] }));
+      const cr = el.getBoundingClientRect();
+      if (cr && cr.width > 0 && cr.height > 0) {
+        clientX = cr.left + cr.width / 2;
+        clientY = cr.top + cr.height / 2;
+      }
+    } catch (e) {}
 
-      setTimeout(() => {
-        target.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [t] }));
-        target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: clientX, clientY: clientY }));
-      }, 50);
-    } catch (e) {
-      try { target.click(); } catch (e2) {}
-    }
+    // 避开手指物理触碰的尾流（80~100ms），等待框架手势机状态归位后派发纯净手势
+    setTimeout(() => {
+      try {
+        const t = new Touch({ identifier: Date.now(), target: native, clientX: clientX, clientY: clientY, pageX: clientX, pageY: clientY });
+        native.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [t], targetTouches: [t], changedTouches: [t] }));
+
+        setTimeout(() => {
+          native.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [t] }));
+          native.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: clientX, clientY: clientY }));
+        }, 50);
+      } catch (e) {
+        try { native.click(); } catch (e2) {}
+      }
+    }, 100);
+
     return true;
   }
 
@@ -614,7 +617,7 @@
           if (!isPublic && rec) {
             xlLog('fav jump: cache ' + rawName);
             jumpToDrinkWater(rec);
-          } else if (replayNativeTap(rawName, e || card)) {
+          } else if (replayNativeTap(rawName, card)) {
             xlLog('fav jump: replay native tap ' + rawName);
           } else if (replayCapturedTap(rawName)) {
             xlLog('fav jump: replay captured tap ' + rawName);
