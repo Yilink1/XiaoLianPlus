@@ -1,8 +1,14 @@
+<div align="center">
+
+<img src="docs/logo.png" width="96" height="96" alt="XiaoLianPlus Logo" />
+
 # 笑联Plus
- 
+
 智慧笑联（`com.xiaolian.prometheus`）体验增强 Xposed 模块，基于 LibXposed (API 102) 开发
- 
-***
+
+</div>
+
+---
  
 ## 核心特性
  
