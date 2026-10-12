@@ -20,6 +20,7 @@ import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.api.XposedModule;
 import io.github.yilink1.xiaolianplus.hook.DirectLaunchHooker;
 import io.github.yilink1.xiaolianplus.hook.MinePageHooker;
+import io.github.yilink1.xiaolianplus.hook.ScreenshotBlockHooker;
 import io.github.yilink1.xiaolianplus.hook.SplashAdHooker;
 import io.github.yilink1.xiaolianplus.hook.SplashDelayHooker;
 import io.github.yilink1.xiaolianplus.hook.SplashStartHooker;
@@ -48,6 +49,7 @@ public class XiaoLianModule extends XposedModule {
     private volatile boolean mWaterHooked = false;
     private MinePageHooker mMinePageHooker = null;
     private DirectLaunchHooker mDirectLaunchHooker = null;
+    private ScreenshotBlockHooker mScreenshotBlockHooker = null;
 
     @Override
     public void onModuleLoaded(@NonNull ModuleLoadedParam param) {
@@ -82,12 +84,14 @@ public class XiaoLianModule extends XposedModule {
         mWaterHooker = new WaterDispenserHooker(this);
         mMinePageHooker = new MinePageHooker(this);
         mDirectLaunchHooker = new DirectLaunchHooker(this);
+        mScreenshotBlockHooker = new ScreenshotBlockHooker(this);
 
         // 3. 第一层：直接尝试用当前类加载器 Hook
         tryHookSplash(param.getClassLoader());
         tryHookWaterDispenser(param.getClassLoader());
         tryHookMinePage(param.getClassLoader());
         tryHookDirectLaunch(param.getClassLoader());
+        tryHookScreenshotBlock(param.getClassLoader());
 
         // 4. 第二层：Hook ContextWrapper.attachBaseContext 解决 MultiDex 晚装载
         hookContextWrapperAttach();
@@ -136,6 +140,7 @@ public class XiaoLianModule extends XposedModule {
                         tryHookWaterDispenser(targetCl);
                         tryHookMinePage(targetCl);
                         tryHookDirectLaunch(targetCl);
+                        tryHookScreenshotBlock(targetCl);
                     }
 
                     return result;
@@ -166,6 +171,7 @@ public class XiaoLianModule extends XposedModule {
                     Activity activity = (Activity) chain.getArg(0);
                     if (activity != null) {
                         setAppContext(activity);
+                        tryHookScreenshotBlock(activity.getClass().getClassLoader());
                         String className = activity.getClass().getName();
                         if (className.contains("SplashActivity")) {
                             SplashStartHooker.reset();
@@ -200,6 +206,15 @@ public class XiaoLianModule extends XposedModule {
             appLog(Log.INFO, TAG, "Instrumentation.callActivityOnCreate hook installed successfully");
         } catch (Throwable t) {
             log(Log.ERROR, TAG, "Failed to hook Instrumentation.callActivityOnCreate", t);
+        }
+    }
+
+    private synchronized void tryHookScreenshotBlock(ClassLoader classLoader) {
+        if (classLoader == null || mScreenshotBlockHooker == null) return;
+        try {
+            mScreenshotBlockHooker.initHooks(classLoader);
+        } catch (Throwable t) {
+            appLog(Log.WARN, TAG, "Failed to init ScreenshotBlockHooker", t);
         }
     }
 
