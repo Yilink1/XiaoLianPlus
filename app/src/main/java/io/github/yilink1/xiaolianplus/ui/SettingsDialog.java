@@ -119,12 +119,18 @@ public class SettingsDialog {
         root.addView(tvTitle);
 
         TextView tvSub = new TextView(context);
-        tvSub.setText("XIAOLIAN PLUS");
-        tvSub.setTextSize(11);
-        tvSub.setLetterSpacing(0.12f);
-        tvSub.setTextColor(Color.parseColor("#1082FF"));
+        tvSub.setText("XIAOLIAN PLUS · V" + BuildConfig.VERSION_NAME);
+        tvSub.setTextSize(10);
+        tvSub.setLetterSpacing(0.05f);
+        tvSub.setTextColor(Color.parseColor("#9CA3AF"));
         tvSub.getPaint().setFakeBoldText(true);
-        tvSub.setPadding(0, dp2px(context, 4), 0, dp16);
+        LinearLayout.LayoutParams lpSub = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        lpSub.topMargin = dp2px(context, 6);
+        lpSub.bottomMargin = dp16;
+        tvSub.setLayoutParams(lpSub);
         root.addView(tvSub);
 
         // 分割线
@@ -248,15 +254,19 @@ public class SettingsDialog {
             rowDebugHud.setVisibility(isUnlocked ? View.VISIBLE : View.GONE);
             if (!isUnlocked) {
                 final int[] titleClicks = {0};
-                tvTitle.setOnClickListener(v -> {
+                View.OnClickListener unlockListener = v -> {
                     titleClicks[0]++;
                     if (titleClicks[0] >= 7) {
                         ModuleConfig.setDevOptionsUnlocked(context, true);
                         rowWebDebug.setVisibility(View.VISIBLE);
                         rowDebugHud.setVisibility(View.VISIBLE);
+                        showToast(context, "已开启调试模式");
                         tvTitle.setOnClickListener(null);
+                        tvSub.setOnClickListener(null);
                     }
-                });
+                };
+                tvTitle.setOnClickListener(unlockListener);
+                tvSub.setOnClickListener(unlockListener);
             }
         }
 
