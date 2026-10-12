@@ -140,6 +140,50 @@
       el.querySelector('.single-left') && el.querySelector('.single-right'));
   }
 
+  // 楼栋元素与楼栋名提取
+  function getBuildingEl() {
+    return document.querySelector('.header-title .building')
+      || document.querySelector('.building')
+      || document.querySelector('.container-head_box_location');
+  }
+
+  function getBuildingName() {
+    const el = getBuildingEl();
+    return el ? (el.textContent || '').replace(/[▾▼\s]/g, '').trim() : '';
+  }
+
+  // 复合机位 Key：公共饮水机跨楼栋重名隔离（形如 "金鹭书院B区::6层YS603"）
+  function makeKey(rawName, building) {
+    const b = (building !== undefined && building !== null ? building : getBuildingName()) || '';
+    return b ? (b + '::' + rawName) : rawName;
+  }
+
+  function parseKey(key) {
+    if (typeof key === 'string' && key.includes('::')) {
+      const idx = key.indexOf('::');
+      return {
+        building: key.slice(0, idx),
+        rawName: key.slice(idx + 2),
+        key: key
+      };
+    }
+    return {
+      building: '',
+      rawName: key || '',
+      key: key || ''
+    };
+  }
+
+  function isCardFav(raw, building) {
+    const b = (building !== undefined && building !== null ? building : getBuildingName()) || '';
+    const key = makeKey(raw, b);
+    const favs = getFavs();
+    if (favs.includes(key)) return true;
+    const isPublic = location.href.includes('publicRoom') || location.hash.includes('publicRoom');
+    if (!isPublic && favs.includes(raw)) return true;
+    return false;
+  }
+
   // 读取原机位名（剔除备注 span）
   function nameOf(card) {
     if (!card) return '';
@@ -148,7 +192,7 @@
     const t = card.querySelector('.single-title');
     if (!t) return '';
     const c = t.cloneNode(true);
-    c.querySelectorAll('.xl-alias').forEach((x) => x.remove());
+    c.querySelectorAll('.xl-alias, .xl-building-badge').forEach((x) => x.remove());
     return (c.textContent || '').trim().split('\n')[0].trim();
   }
 
@@ -181,6 +225,22 @@
         font-weight: normal !important;
         margin-left: 0.12rem !important;
         line-height: 19.66px !important;
+      }
+
+      /* 楼栋角标（全收藏模式标识机器归属楼栋） */
+      .xl-building-badge {
+        font-size: 11px !important;
+        color: #8c8c8c !important;
+        background: #f0f2f5 !important;
+        border-radius: 4px !important;
+        padding: 1px 6px !important;
+        margin-left: 6px !important;
+        font-weight: normal !important;
+        white-space: nowrap !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        line-height: 1.2 !important;
+        vertical-align: middle !important;
       }
 
       /* 扫码悬浮盾：强制提升至最高图层，永远浮在最上层，绝不被卡片或星标盖过 */
@@ -295,19 +355,39 @@
   }
 
   // ───────── 5. 备注名追加 ─────────
-  function applyAlias(card, raw, data) {
+  function applyAlias(card, raw, data, buildingBadgeText) {
     const t = card.querySelector('.single-title');
     if (!t) return;
     let span = Array.from(t.children).find((c) => c.classList && c.classList.contains('xl-alias'));
     const hasColor = !!(data && data.color && data.color !== 'default');
     const hasAlias = !!(data && data.name);
+
+    // 渲染楼栋角标（在全收藏视图或传入 buildingBadgeText 时显示，默认开启，用户可显式关闭）
+    const shouldShowBuilding = !!(buildingBadgeText && !(data && data.showBuilding === false));
+    let bBadge = t.querySelector('.xl-building-badge');
+    if (shouldShowBuilding) {
+      if (!bBadge) {
+        bBadge = document.createElement('span');
+        bBadge.className = 'xl-building-badge';
+        t.appendChild(bBadge);
+      }
+      bBadge.textContent = buildingBadgeText;
+    } else if (bBadge) {
+      bBadge.remove();
+    }
+
     if (!hasColor && !hasAlias) {
       if (span) span.remove();
       if (t.classList.contains('xl-aliased')) t.classList.remove('xl-aliased');
       return;
     }
-    const sig = [data.name || '', data.color || '', data.showRaw ? 1 : 0, raw].join('|');
-    if (!span) { span = document.createElement('span'); span.className = 'xl-alias'; t.appendChild(span); }
+    const sig = [data.name || '', data.color || '', data.showRaw ? 1 : 0, raw, shouldShowBuilding ? buildingBadgeText : ''].join('|');
+    if (!span) {
+      span = document.createElement('span');
+      span.className = 'xl-alias';
+      if (bBadge) t.insertBefore(span, bBadge);
+      else t.appendChild(span);
+    }
     if (span.dataset.sig !== sig) {
       span.dataset.sig = sig;
       span.textContent = '';
@@ -327,7 +407,7 @@
   }
 
   // ───────── 6. 卡片长按备注 ─────────
-  function bindCardLongPress(card, customRaw) {
+  function bindCardLongPress(card, customRaw, customBuilding) {
     if (card.dataset.xlBound === '1') return;
     card.dataset.xlBound = '1';
     let timer = null, isLong = false, sx = 0, sy = 0;
@@ -340,7 +420,8 @@
       timer = setTimeout(() => {
         isLong = true;
         const raw = customRaw || card.getAttribute('data-raw') || nameOf(card);
-        if (raw && typeof window.__xl_openSheet__ === 'function') window.__xl_openSheet__(raw);
+        const building = customBuilding || card.getAttribute('data-building') || getBuildingName();
+        if (raw && typeof window.__xl_openSheet__ === 'function') window.__xl_openSheet__(raw, building);
       }, 380);
     }, { capture: true, passive: true });
 
@@ -417,29 +498,41 @@
       sr.appendChild(star);
     }
 
-    const currentRaw = nameOf(card);
-    const favs = getFavs();
-    const isFav = favs.includes(currentRaw);
+    const currentRaw = card.getAttribute('data-raw') || nameOf(card);
+    const currentBuilding = card.getAttribute('data-building') || getBuildingName();
+    const isFav = isCardFav(currentRaw, currentBuilding);
     star.textContent = isFav ? '★' : '☆';
     star.className = 'xl-card-star ' + (isFav ? 'is-fav' : 'not-fav');
   }
 
   function onStarTrigger(e, star) {
     const card = star.closest('div.single');
-    const raw = nameOf(card);
+    if (!card) return;
+    const raw = card.getAttribute('data-raw') || nameOf(card);
+    const building = card.getAttribute('data-building') || getBuildingName();
     if (!raw) return;
-    toggleFav(raw, star);
+    toggleFav(raw, star, building);
   }
 
-  function toggleFav(raw, star) {
+  function toggleFav(raw, star, cardBuilding) {
+    const b = (cardBuilding !== undefined && cardBuilding !== null ? cardBuilding : getBuildingName()) || '';
+    const key = makeKey(raw, b);
     let list = getFavs();
-    const has = list.includes(raw);
-    list = has ? list.filter(x => x !== raw) : list.concat(raw);
+    const currentlyFav = isCardFav(raw, b);
+
+    if (currentlyFav) {
+      // 取消收藏：同时清理带楼栋的复合 key 和可能残留的裸 key
+      list = list.filter(x => x !== key && x !== raw);
+    } else {
+      // 添加收藏：清理裸 key（如果有），加入复合 key
+      list = list.filter(x => x !== raw).concat(key);
+    }
     setFavs(list);
 
-    star.textContent = !has ? '★' : '☆';
-    star.className = 'xl-card-star ' + (!has ? 'is-fav' : 'not-fav');
-    console.log('[XiaoLianPlus] 水机【' + raw + '】收藏状态变更为:', !has ? '★ 已收藏' : '☆ 未收藏');
+    const isFavNow = !currentlyFav;
+    star.textContent = isFavNow ? '★' : '☆';
+    star.className = 'xl-card-star ' + (isFavNow ? 'is-fav' : 'not-fav');
+    console.log('[XiaoLianPlus] 水机【' + key + '】收藏状态变更为:', isFavNow ? '★ 已收藏' : '☆ 未收藏');
 
     pass();
   }
@@ -516,6 +609,25 @@
     el.dispatchEvent(ev);
   }
 
+  // 优雅轻量胶囊 Toast（纯原生质感，彻底消除浏览器带域名的丑陋 window.alert）
+  function showToast(msg) {
+    let t = document.getElementById('xl-custom-toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'xl-custom-toast';
+      t.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%) translateY(20px);background:rgba(30,30,30,0.88);color:#ffffff;padding:10px 18px;border-radius:22px;font-size:13px;font-weight:500;line-height:1.4;max-width:82vw;text-align:center;z-index:9999999;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,0.25);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);opacity:0;transition:opacity 0.25s ease,transform 0.25s cubic-bezier(0.2,0.9,0.3,1);';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    t.style.transform = 'translateX(-50%) translateY(0)';
+    clearTimeout(t.__timer);
+    t.__timer = setTimeout(() => {
+      t.style.opacity = '0';
+      t.style.transform = 'translateX(-50%) translateY(10px)';
+    }, 2000);
+  }
+
   let lastReplayTapTime = 0;
   function replayNativeTap(rawName, cardEl) {
     if (Date.now() - lastReplayTapTime < 1000) return true;
@@ -524,32 +636,37 @@
     if (!native) return false;
     lastReplayTapTime = Date.now();
 
-    // 坐标取可见卡片的真实几何中心，避免手指偏折或边缘落点
+    const body = document.body;
+    const had = body.classList.contains('xl-in-fav-mode');
+    if (had) body.classList.remove('xl-in-fav-mode');
+
     let clientX = window.innerWidth / 2;
     let clientY = window.innerHeight / 2;
-    const el = (cardEl && cardEl.getBoundingClientRect) ? cardEl : native;
     try {
-      const cr = el.getBoundingClientRect();
+      const cr = native.getBoundingClientRect();
       if (cr && cr.width > 0 && cr.height > 0) {
         clientX = cr.left + cr.width / 2;
         clientY = cr.top + cr.height / 2;
       }
     } catch (e) {}
 
-    // 避开手指物理触碰的尾流（80~100ms），等待框架手势机状态归位后派发纯净手势
-    setTimeout(() => {
-      try {
-        const t = new Touch({ identifier: Date.now(), target: native, clientX: clientX, clientY: clientY, pageX: clientX, pageY: clientY });
-        native.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [t], targetTouches: [t], changedTouches: [t] }));
+    const tgt = native.querySelector('.single-title') || native;
 
-        setTimeout(() => {
-          native.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [t] }));
-          native.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: clientX, clientY: clientY }));
-        }, 50);
-      } catch (e) {
-        try { native.click(); } catch (e2) {}
-      }
-    }, 100);
+    try {
+      fireTouch(tgt, 'touchstart', clientX, clientY);
+      fireTouch(native, 'touchstart', clientX, clientY);
+
+      setTimeout(() => {
+        fireTouch(tgt, 'touchend', clientX, clientY);
+        fireTouch(native, 'touchend', clientX, clientY);
+        tgt.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, clientX: clientX, clientY: clientY, view: window }));
+        native.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, clientX: clientX, clientY: clientY, view: window }));
+      }, 50);
+    } catch (e) {
+      try { native.click(); } catch (e2) {}
+    } finally {
+      if (had) body.classList.add('xl-in-fav-mode');
+    }
 
     return true;
   }
@@ -572,6 +689,8 @@
 
     const favs = getFavs();
     const aliases = getAliases();
+    const curBuilding = getBuildingName();
+    const isPublic = location.href.includes('publicRoom') || location.hash.includes('publicRoom');
 
     favView.innerHTML = '';
 
@@ -581,23 +700,41 @@
       emptyTip.innerHTML = '暂无收藏的水机<br><span style="font-size:12px;color:#bfbfbf;margin-top:8px;display:inline-block;">点击卡片右侧 ☆ 星标即可加入收藏</span>';
       favView.appendChild(emptyTip);
     } else {
-      favs.forEach((rawName) => {
+      favs.forEach((favItem) => {
+        const { building, rawName, key } = parseKey(favItem);
         const card = templateCard.cloneNode(true);
         // 清除旧克隆节点残留，确保全新绑定
-        card.querySelectorAll('.xl-card-star, .xl-alias').forEach(n => n.remove());
+        card.querySelectorAll('.xl-card-star, .xl-alias, .xl-building-badge').forEach(n => n.remove());
         delete card.dataset.xlBound;
         card.classList.remove('xl-native-card');
 
         card.setAttribute('data-raw', rawName);
+        if (building) card.setAttribute('data-building', building);
+        card.setAttribute('data-key', key);
         card.setAttribute('data-xl', '1');
         card.style.display = 'flex';
 
-        // 标题与备注
+        // 标题与备注（在全收藏列表里展示所属楼栋角标）
         const titleEl = card.querySelector('.single-title');
         if (titleEl) {
           titleEl.textContent = rawName;
         }
-        applyAlias(card, rawName, aliases[rawName]);
+        applyAlias(card, rawName, aliases[key] || aliases[rawName], building);
+
+        // 卡片半透明弱化与可达性判定：
+        // 1. 公共饮水机：
+        //    - 若指定了楼栋且与当前楼栋不符，属于跨楼栋卡片 (opacity: 0.5)
+        //    - 若属于当前楼栋但不在当前列表 (非本楼层)，属于跨楼层卡片 (opacity: 0.5)
+        //    - 只有既属于当前楼栋又存在于原生列表中，才是本楼层可用卡片 (opacity: 1)
+        const isSameBuilding = !building || !curBuilding || building === curBuilding;
+        let inList = false;
+        if (isPublic) {
+          if (isSameBuilding) {
+            inList = Array.from(document.querySelectorAll('div.single'))
+              .some(c => !c.closest('#xl-fav-native-view') && isDispenserCard(c) && nameOf(c) === rawName);
+          }
+          card.style.opacity = (isSameBuilding && inList) ? '1' : '0.5';
+        }
 
         // 卡片点击直达打水 (守卫防线：严格屏蔽点星命中与幽灵延迟)
         card.onclick = (e) => {
@@ -608,30 +745,40 @@
           if (Date.now() - (window.__xl_last_star_tap_time || 0) < 800) return;
           if (Date.now() - (window.__xl_global_last_touch_time || 0) < 800) return;
 
-          const isPublic = location.href.includes('publicRoom') || location.hash.includes('publicRoom');
           const rec = getCachedRecords()[rawName];
-          xlLog('fav tap public=' + isPublic + ' rec=' + !!rec);
-          // 联网机：已验证 selectDevice 能直达，优先用缓存。
-          // 公共机：卡片点击走 onComponentRenderEvent，selectDevice 会被忽略（实测日志：发出了但不跳转），
-          //         所以优先在原生列表里替用户真点一下；没有原生卡片（跨楼栋）才补发之前真点时记下的整条 tap 消息。
+          xlLog('fav tap public=' + isPublic + ' building=' + building + ' cur=' + curBuilding);
+
+          // 1. 联网机：有缓存参数，优先协议直达
           if (!isPublic && rec) {
             xlLog('fav jump: cache ' + rawName);
             jumpToDrinkWater(rec);
-          } else if (replayNativeTap(rawName, card)) {
+            return;
+          }
+
+          // 2. 公共机：跨楼栋检查
+          if (isPublic && !isSameBuilding) {
+            xlLog('fav jump: cross building ' + rawName);
+            showToast(`【${rawName}】属于${building}，请先切换楼栋`);
+            return;
+          }
+
+          // 3. 本楼层机器（原生列表里能找到这台）：真实重放直达
+          if (replayNativeTap(rawName, card)) {
             xlLog('fav jump: replay native tap ' + rawName);
-          } else if (replayCapturedTap(rawName)) {
-            xlLog('fav jump: replay captured tap ' + rawName);
-          } else if (rec) {
-            xlLog('fav jump: cache(fallback) ' + rawName);
-            jumpToDrinkWater(rec);
+            return;
+          }
+
+          // 4. 跨楼层机器 / 未缓存机器：弹出优雅无域名的轻量 Toast
+          xlLog('fav jump: cross floor ' + rawName);
+          if (isPublic) {
+            showToast(`【${rawName}】为跨楼层设备，请在全部水机中切换楼层`);
           } else {
-            xlLog('fav jump: no record, no native card ' + rawName);
-            alert(`【${rawName}】是跨楼栋水机，由于首次使用尚未缓存机位参数，请先切换到该楼栋浏览一次，后续即可永久免切换直达！`);
+            showToast(`【${rawName}】尚未缓存参数，请先切换至该楼栋浏览一次`);
           }
         };
 
         // 长按设置备注
-        bindCardLongPress(card, rawName);
+        bindCardLongPress(card, rawName, building);
 
         // 绑定星标 (带事件全新绑定)
         attachInlineStar(card);
@@ -693,11 +840,6 @@
   // 但渲染层不再向逻辑层发 toSelectBuilding（正常点击是 click 后 1ms 内就发）。
   // 根因在小程序渲染层，脚本侧无法直接修；这里检测「点击落在楼栋名上、200ms 内却没有 toSelectBuilding 发出」，
   // 用最近一次真实消息（没有则按 jumpToDrinkWater 同款格式构造）补发一次。
-  function getBuildingEl() {
-    return document.querySelector('.header-title .building')
-      || document.querySelector('.building')
-      || document.querySelector('.container-head_box_location');
-  }
 
   function replayToSelectBuilding() {
     if (!window.AlipayJSBridge) return;
@@ -780,6 +922,8 @@
   // ───────── 11. 底部抽屉面板 (改备注与高亮色，5 种经典配色) ─────────
   let sheetInitialized = false;
   let activeTargetRawName = '';
+  let activeTargetBuilding = '';
+  let activeTargetKey = '';
   let selectedColor = 'default';
 
   function initSheet() {
@@ -820,10 +964,17 @@
           </div>
           <label style="position: relative; display: inline-block; width: 44px; height: 24px;">
             <input id="sheet-toggle-raw" type="checkbox" style="opacity: 0; width: 0; height: 0;" />
-            <span id="sheet-toggle-slider" style="
-              position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-              background-color: #ccc; transition: .25s; border-radius: 24px;
-            "></span>
+            <span id="sheet-toggle-slider"></span>
+          </label>
+        </div>
+        <div id="box-toggle-building" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; padding: 4px 0;">
+          <div>
+            <div style="font-size: 13px; color: #262626; font-weight: 500;">显示所属楼栋</div>
+            <div style="font-size: 11px; color: #8c8c8c;">仅在全部收藏视图中生效</div>
+          </div>
+          <label style="position: relative; display: inline-block; width: 44px; height: 24px;">
+            <input id="sheet-toggle-building" type="checkbox" style="opacity: 0; width: 0; height: 0;" />
+            <span id="sheet-toggle-building-slider"></span>
           </label>
         </div>
         <div style="margin-bottom: 24px;">
@@ -840,11 +991,24 @@
 
     const styleEl = document.createElement('style');
     styleEl.textContent = `
-      #sheet-toggle-raw:checked + #sheet-toggle-slider { background-color: #1677ff; }
-      #sheet-toggle-raw:checked + #sheet-toggle-slider:before { transform: translateX(20px); }
-      #sheet-toggle-slider:before {
+      #sheet-toggle-slider,
+      #sheet-toggle-building-slider {
+        position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+        background-color: #e9e9ea !important; transition: background-color .25s ease; border-radius: 24px;
+      }
+      #sheet-toggle-raw:checked + #sheet-toggle-slider,
+      #sheet-toggle-building:checked + #sheet-toggle-building-slider {
+        background-color: #1677ff !important;
+      }
+      #sheet-toggle-raw:checked + #sheet-toggle-slider:before,
+      #sheet-toggle-building:checked + #sheet-toggle-building-slider:before {
+        transform: translateX(20px);
+      }
+      #sheet-toggle-slider:before,
+      #sheet-toggle-building-slider:before {
         position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
-        background-color: white; transition: .25s; border-radius: 50%;
+        background-color: white; transition: transform .25s cubic-bezier(0.2, 0.9, 0.3, 1); border-radius: 50%;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
       }
     `;
     document.head.appendChild(styleEl);
@@ -905,16 +1069,24 @@
     const rawTag = sheetRoot.querySelector('#sheet-raw-tag');
     const inputAlias = sheetRoot.querySelector('#sheet-input-alias');
     const toggleRaw = sheetRoot.querySelector('#sheet-toggle-raw');
+    const toggleBuilding = sheetRoot.querySelector('#sheet-toggle-building');
+    const boxToggleBuilding = sheetRoot.querySelector('#box-toggle-building');
     const saveBtn = sheetRoot.querySelector('#sheet-save-btn');
 
-    window.__xl_openSheet__ = function (raw) {
+    window.__xl_openSheet__ = function (raw, building) {
       activeTargetRawName = raw;
-      rawTag.textContent = raw;
+      activeTargetBuilding = building || '';
+      activeTargetKey = makeKey(raw, activeTargetBuilding);
+      rawTag.textContent = activeTargetBuilding || raw;
       const aliases = getAliases();
-      const cur = aliases[raw] || {};
+      const cur = aliases[activeTargetKey] || aliases[raw] || {};
       inputAlias.value = cur.name || '';
       inputAlias.placeholder = raw;
       toggleRaw.checked = cur.showRaw === true;
+      toggleBuilding.checked = cur.showBuilding !== false; // 默认开启
+      if (boxToggleBuilding) {
+        boxToggleBuilding.style.display = activeTargetBuilding ? 'flex' : 'none';
+      }
       selectedColor = cur.color || 'default';
 
       updatePaletteUI();
@@ -982,14 +1154,19 @@
     saveBtn.onclick = () => {
       const aliases = getAliases();
       const newName = inputAlias.value.trim();
+      const targetKey = activeTargetKey || activeTargetRawName;
 
-      if (!newName && selectedColor === 'default') {
+      const hasCustomSetting = !!newName || selectedColor !== 'default' || toggleRaw.checked || !toggleBuilding.checked;
+
+      if (!hasCustomSetting) {
+        delete aliases[targetKey];
         delete aliases[activeTargetRawName];
       } else {
-        aliases[activeTargetRawName] = {
+        aliases[targetKey] = {
           name: newName,
           color: selectedColor,
-          showRaw: toggleRaw.checked
+          showRaw: toggleRaw.checked,
+          showBuilding: toggleBuilding.checked
         };
       }
 
@@ -1016,6 +1193,34 @@
       const nativeCards = Array.from(document.querySelectorAll('div.single'))
         .filter(c => !c.closest('#xl-fav-native-view') && isDispenserCard(c));
 
+      const isPublic = location.href.includes('publicRoom') || location.hash.includes('publicRoom');
+      const curBuilding = getBuildingName();
+
+      // 一次性平滑升级：将旧版没有楼栋前缀的公共机收藏，升级为带当前楼栋前缀的复合 key
+      if (isPublic && curBuilding) {
+        const rawFavs = getFavs();
+        let migrated = false;
+        const newFavs = rawFavs.map(item => {
+          if (typeof item === 'string' && !item.includes('::')) {
+            migrated = true;
+            return curBuilding + '::' + item;
+          }
+          return item;
+        });
+        if (migrated) {
+          setFavs(newFavs);
+          const aliases = getAliases();
+          let aliasMigrated = false;
+          Object.keys(aliases).forEach(k => {
+            if (!k.includes('::')) {
+              aliases[curBuilding + '::' + k] = aliases[k];
+              aliasMigrated = true;
+            }
+          });
+          if (aliasMigrated) setAliases(aliases);
+        }
+      }
+
       if (nativeCards.length > 0) {
         const favs = getFavs(), aliases = getAliases();
 
@@ -1031,24 +1236,31 @@
         // 刷新原生卡片的基础能力（长按备注、星标绑定、别名）
         nativeCards.forEach((card, i) => {
           const raw = nameOf(card);
+          const key = makeKey(raw, curBuilding);
           if (card.dataset.xl !== '1') card.setAttribute('data-xl', '1');
           card.classList.add('xl-native-card');
-          bindCardLongPress(card);
-          applyAlias(card, raw, aliases[raw]);
+          bindCardLongPress(card, raw, curBuilding);
+          applyAlias(card, raw, aliases[key] || aliases[raw]);
           attachInlineStar(card);
 
-          // 原生列表置顶已收藏水机
-          const fi = favs.indexOf(raw);
-          card.style.order = String(fi >= 0 ? (-1000 + fi) : i);
+          // 原生列表置顶已收藏水机（仅在联网机生效；公共机具有楼层分组，清空 order 保持原生干净排版）
+          if (!isPublic) {
+            const fi = favs.indexOf(key) >= 0 ? favs.indexOf(key) : favs.indexOf(raw);
+            card.style.order = String(fi >= 0 ? (-1000 + fi) : i);
+          } else {
+            card.style.order = '';
+          }
         });
 
         const nativeScroll = nativeCards[0]?.closest('.scroll-container') || nativeCards[0]?.parentElement;
         if (nativeScroll) {
           ensureBottomSpacer(nativeScroll);
-          const d = getComputedStyle(nativeScroll).display;
-          if (d === 'block' || d === 'flow-root') {
-            nativeScroll.style.display = 'flex';
-            nativeScroll.style.flexDirection = 'column';
+          if (!isPublic) {
+            const d = getComputedStyle(nativeScroll).display;
+            if (d === 'block' || d === 'flow-root') {
+              nativeScroll.style.display = 'flex';
+              nativeScroll.style.flexDirection = 'column';
+            }
           }
         }
 
@@ -1076,6 +1288,7 @@
       console.warn('[XiaoLianPlus] pass error', e);
     } finally {
       passing = false;
+      try { observer.takeRecords(); } catch (e) {}
       if (XL_DEBUG) {
         const cost = performance.now() - passStart;
         if (cost > 20) xlLog('pass ' + Math.round(cost) + 'ms fav=' + isFavMode);
@@ -1107,7 +1320,7 @@
 
   const rootTarget = document.body || document.documentElement;
   if (rootTarget) {
-    observer.observe(rootTarget, { childList: true, subtree: true });
+    observer.observe(rootTarget, { childList: true, subtree: true, characterData: true });
   }
   // ───────── 13. 调试条（屏幕左下角；pointer-events:none，不影响任何点击） ─────────
   if (XL_DEBUG) {
