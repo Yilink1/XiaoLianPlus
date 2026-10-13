@@ -8,6 +8,7 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -253,9 +254,9 @@ public class ShortcutEditorDialog {
         btnCancel.setOnClickListener(v -> d.dismiss());
         bottomRow.addView(btnCancel);
 
-        // 间距加大至 36dp，让「取消」更加明显靠左展开，与「保存」疏朗平衡
+        // 间距收窄至 12dp，让取消按钮往右靠拢，与保存形成紧凑舒适的按钮组
         View btnGap = new View(act);
-        bottomRow.addView(btnGap, new LinearLayout.LayoutParams(dp2px(act, 36), 1));
+        bottomRow.addView(btnGap, new LinearLayout.LayoutParams(dp2px(act, 12), 1));
 
         TextView btnSave = new TextView(act);
         btnSave.setText("保存");
@@ -264,6 +265,12 @@ public class ShortcutEditorDialog {
         btnSave.getPaint().setFakeBoldText(true);
         btnSave.setGravity(Gravity.CENTER);
         btnSave.setPadding(dp2px(act, 10), dp2px(act, 6), dp2px(act, 10), dp2px(act, 6));
+
+        // 稍微往左收拢一点点（右边距 8dp），避免贴着弹窗右内边显得过于逼仄
+        LinearLayout.LayoutParams btnSaveLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        btnSaveLp.rightMargin = dp2px(act, 8);
+        btnSave.setLayoutParams(btnSaveLp);
 
         btnSave.setOnClickListener(v -> {
             d.dismiss();
@@ -288,8 +295,22 @@ public class ShortcutEditorDialog {
             w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
 
             w.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
+            w.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
             w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             w.setDimAmount(0.45f);
+
+            View decor = w.getDecorView();
+            decor.setFocusableInTouchMode(true);
+            decor.requestFocus();
+
+            d.setOnKeyListener((dialogInterface, keyCode, event) -> {
+                if (keyCode == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP) {
+                    d.dismiss();
+                    return true;
+                }
+                return false;
+            });
 
             if (Build.VERSION.SDK_INT >= 33) {
                 try {
@@ -310,13 +331,14 @@ public class ShortcutEditorDialog {
         return tv;
     }
 
-    /** 无底色的灰色字符按钮，固定 34dp 宽，保证点击区域。 */
+    /** 无底色的灰色字符按钮，固定 40dp 宽，保证点击区域。 */
     private static TextView iconButton(Activity act, String glyph, Runnable onClick) {
         TextView tv = new TextView(act);
         tv.setText(glyph);
         boolean isRemove = "✕".equals(glyph);
-        tv.setTextSize(15);
+        tv.setTextSize(isRemove ? 15.5f : 15);
         tv.setTextColor(isRemove ? C_TEXT_SUB : C_ACCENT);
+        tv.getPaint().setFakeBoldText(true);
         tv.setGravity(Gravity.CENTER);
         tv.setLayoutParams(new LinearLayout.LayoutParams(dp2px(act, 40), ViewGroup.LayoutParams.MATCH_PARENT));
         tv.setOnClickListener(v -> onClick.run());
@@ -353,7 +375,7 @@ public class ShortcutEditorDialog {
 
         TextView tvPlus = new TextView(act);
         tvPlus.setText("＋");
-        tvPlus.setTextSize(22);
+        tvPlus.setTextSize(24);
         tvPlus.setTextColor(C_ACCENT);
         tvPlus.getPaint().setFakeBoldText(true);
         tvPlus.setGravity(Gravity.CENTER);
