@@ -560,24 +560,18 @@ public class SettingsDialog {
 
         row.addView(textCol);
 
-        // 精巧的 ☰ 自选设备菜单按钮
+        // 纯净无包裹的 ☰ 自选设备菜单图标，紧密靠近右侧开关
         TextView btnMenu = new TextView(context);
         btnMenu.setText("☰");
-        btnMenu.setTextSize(15);
+        btnMenu.setTextSize(17);
         btnMenu.setTextColor(Color.parseColor("#1082FF"));
+        btnMenu.getPaint().setFakeBoldText(true);
         btnMenu.setGravity(Gravity.CENTER);
-        int pad = dp2px(context, 6);
-        btnMenu.setPadding(pad, dp2px(context, 2), pad, dp2px(context, 2));
-
-        GradientDrawable menuBg = new GradientDrawable();
-        menuBg.setColor(Color.parseColor("#EAF2FF"));
-        menuBg.setCornerRadius(dp2px(context, 6));
-        menuBg.setStroke(dp2px(context, 1), Color.parseColor("#CCE1FF"));
-        btnMenu.setBackground(menuBg);
+        btnMenu.setPadding(dp2px(context, 10), dp2px(context, 6), dp2px(context, 2), dp2px(context, 6));
 
         LinearLayout.LayoutParams btnMenuLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        btnMenuLp.rightMargin = dp2px(context, 10);
+        btnMenuLp.rightMargin = 0;
         btnMenu.setLayoutParams(btnMenuLp);
 
         boolean enabled = ModuleConfig.isAppShortcutsEnabled(context);
