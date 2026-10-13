@@ -51,6 +51,8 @@ public class DirectLaunchHooker {
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
     private final AtomicBoolean mHasDirectLaunched = new AtomicBoolean(false);
 
+    public static volatile java.lang.ref.WeakReference<Activity> sCurrentHomeActivity = null;
+
     private volatile boolean mFragmentHooked = false;
     private volatile boolean mNavUtilsHooked = false;
     private final Set<Class<?>> mHookedIndexClasses = new HashSet<>();
@@ -58,6 +60,11 @@ public class DirectLaunchHooker {
 
     public DirectLaunchHooker(@NonNull XiaoLianModule module) {
         this.mModule = module;
+        io.github.yilink1.xiaolianplus.shortcut.AppShortcutHelper.sShortcutDispatcher = (homeActivity, target, deviceName) -> {
+            mHasDirectLaunched.set(true); // 锁死默认开屏直达
+            // 热启动直接瞬发（0ms）
+            dispatchShortcutTarget(homeActivity, target, deviceName, homeActivity.getClass().getClassLoader(), false);
+        };
     }
 
     public synchronized void initHooks(ClassLoader classLoader) {
@@ -164,6 +171,12 @@ public class DirectLaunchHooker {
                 for (String line : dump) {
                     mModule.log(Log.INFO, TAG, "  " + line);
                 }
+                mMainHandler.post(() -> {
+                    try {
+                        io.github.yilink1.xiaolianplus.shortcut.AppShortcutHelper.updateShortcuts(ctx);
+                    } catch (Throwable ignored) {
+                    }
+                });
             } else if (parsed.isEmpty()) {
                 mModule.log(Log.WARN, TAG, "updateLifeService got MiniProgram list but nothing parsable; "
                         + "keep old snapshot. Items: " + dump);
@@ -279,15 +292,69 @@ public class DirectLaunchHooker {
         }
     }
 
-    // ==================== 3. 启动直达 ====================
+    // ==================== 3. 启动直达与快捷方式分发 ====================
+
+    private volatile boolean mHomeNewIntentHooked = false;
+
+    private void hookHomeActivityOnNewIntent(ClassLoader cl) {
+        if (mHomeNewIntentHooked) return;
+        try {
+            Class<?> homeCls = cl.loadClass("com.xiaolian.ui_module.home.HomeActivity");
+            Method onNewIntent = homeCls.getDeclaredMethod("onNewIntent", android.content.Intent.class);
+            mModule.hook(onNewIntent)
+                .setId("hook_home_activity_on_new_intent")
+                .setPriority(XposedInterface.PRIORITY_LOWEST)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(chain -> {
+                    try {
+                        Object thisObj = chain.getThisObject();
+                        List<?> args = chain.getArgs();
+                        if (thisObj instanceof Activity && args != null && !args.isEmpty() && args.get(0) instanceof android.content.Intent) {
+                            handleShortcutIntent((Activity) thisObj, (android.content.Intent) args.get(0), cl);
+                        }
+                    } catch (Throwable t) {
+                        mModule.log(Log.WARN, TAG, "Failed handling onNewIntent shortcut", t);
+                    }
+                    return chain.proceed();
+                });
+            mHomeNewIntentHooked = true;
+            mModule.log(Log.INFO, TAG, "Hooked HomeActivity.onNewIntent for shortcut routing");
+        } catch (Throwable ignored) {
+        }
+    }
 
     /**
-     * 在 HomeActivity 启动就绪时分发启动直达策略
+     * 在 HomeActivity 启动就绪时分发启动直达策略与注册桌面快捷方式
      */
     public void onHomeActivityReady(Activity activity, ClassLoader classLoader) {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
 
+        sCurrentHomeActivity = new java.lang.ref.WeakReference<>(activity);
+
         initHooks(classLoader);
+        hookHomeActivityOnNewIntent(classLoader);
+
+        // 异步刷新桌面快捷方式（确保主线程流畅）
+        mMainHandler.post(() -> {
+            try {
+                io.github.yilink1.xiaolianplus.shortcut.AppShortcutHelper.updateShortcuts(activity);
+            } catch (Throwable t) {
+                mModule.log(Log.WARN, TAG, "Failed updating shortcuts on ready", t);
+            }
+        });
+
+        // 优先检查是否是由桌面快捷方式拉起（支持 Splash 透传过来的 pendingTarget 或 HomeActivity 本身的 Intent）
+        String pendingTarget = io.github.yilink1.xiaolianplus.shortcut.AppShortcutHelper.consumePendingTarget();
+        String pendingDevName = io.github.yilink1.xiaolianplus.shortcut.AppShortcutHelper.consumePendingDeviceName();
+        android.content.Intent intent = activity.getIntent();
+        if (pendingTarget != null) {
+            mHasDirectLaunched.set(true); // 锁死默认开屏直达，快捷方式享受最高特权
+            dispatchShortcutTarget(activity, pendingTarget, pendingDevName, classLoader, true);
+            return;
+        } else if (intent != null && handleShortcutIntent(activity, intent, classLoader)) {
+            mHasDirectLaunched.set(true);
+            return;
+        }
 
         int mode = ModuleConfig.getDirectLaunchMode(activity);
         if (mode == ModuleConfig.DIRECT_LAUNCH_HOME) {
@@ -301,16 +368,65 @@ public class DirectLaunchHooker {
 
         mModule.log(Log.INFO, TAG, "Processing direct launch strategy: mode=" + mode);
 
-        // 延时 280ms 等待宿主首帧 DecorView 绘制完成，提供最丝滑的视觉转场
-        mMainHandler.postDelayed(() -> {
+        if (mode == ModuleConfig.DIRECT_LAUNCH_SCAN) {
+            // 扫码具备原生纯粹性，直接 0ms 瞬发调起，彻底消灭首页等待与露脸
+            mMainHandler.post(() -> {
+                if (activity.isFinishing() || activity.isDestroyed()) return;
+                performDirectScan(activity);
+            });
+        } else if (mode == ModuleConfig.DIRECT_LAUNCH_DISPENSER) {
+            // 设备/小程序保留 200ms 安全缓冲，确保阿里 mPaaS 容器与用户上下文完成初始化
+            mMainHandler.postDelayed(() -> {
+                if (activity.isFinishing() || activity.isDestroyed()) return;
+                performDirectDevice(activity, classLoader, null);
+            }, 200);
+        }
+    }
+
+    /**
+     * 响应来自桌面快捷方式的 Intent
+     * @return true 表示已成功识别并处理该快捷意图
+     */
+    private boolean handleShortcutIntent(Activity activity, android.content.Intent intent, ClassLoader classLoader) {
+        if (intent == null) return false;
+        String action = intent.getAction();
+        if (!io.github.yilink1.xiaolianplus.shortcut.AppShortcutHelper.ACTION_SHORTCUT.equals(action)) {
+            return false;
+        }
+
+        String target = intent.getStringExtra(io.github.yilink1.xiaolianplus.shortcut.AppShortcutHelper.EXTRA_SHORTCUT_TARGET);
+        String devName = intent.getStringExtra(io.github.yilink1.xiaolianplus.shortcut.AppShortcutHelper.EXTRA_SHORTCUT_DEVICE_NAME);
+        // 消费此 action，防止旋转屏幕或重新附着时重复消费
+        intent.setAction(null);
+
+        if (target != null && !target.trim().isEmpty()) {
+            dispatchShortcutTarget(activity, target.trim(), devName, classLoader, false);
+            return true;
+        }
+        return false;
+    }
+
+    private void dispatchShortcutTarget(Activity activity, String target, String deviceName, ClassLoader classLoader, boolean isColdLaunch) {
+        long delay = 0;
+        if (isColdLaunch && io.github.yilink1.xiaolianplus.shortcut.AppShortcutHelper.TARGET_DEVICE.equals(target)) {
+            delay = 200; // 仅小程序/设备在冷启动时保留容器初始化安全缓冲
+        }
+        mModule.log(Log.INFO, TAG, "Triggered from App Shortcut: target=" + target + ", dev=" + deviceName + ", isCold=" + isColdLaunch + ", delay=" + delay + "ms");
+        Runnable action = () -> {
             if (activity.isFinishing() || activity.isDestroyed()) return;
 
-            if (mode == ModuleConfig.DIRECT_LAUNCH_SCAN) {
+            if (io.github.yilink1.xiaolianplus.shortcut.AppShortcutHelper.TARGET_SCAN.equals(target)) {
                 performDirectScan(activity);
-            } else if (mode == ModuleConfig.DIRECT_LAUNCH_DISPENSER) {
-                performDirectDevice(activity, classLoader);
+            } else if (io.github.yilink1.xiaolianplus.shortcut.AppShortcutHelper.TARGET_DEVICE.equals(target)) {
+                performDirectDevice(activity, classLoader, deviceName);
             }
-        }, 280);
+        };
+
+        if (delay <= 0) {
+            mMainHandler.post(action);
+        } else {
+            mMainHandler.postDelayed(action, delay);
+        }
     }
 
     private void performDirectScan(Activity activity) {
@@ -346,11 +462,25 @@ public class DirectLaunchHooker {
         Toast.makeText(activity, "笑联Plus: 启动直达扫码失败", Toast.LENGTH_SHORT).show();
     }
 
-    private void performDirectDevice(Activity activity, ClassLoader classLoader) {
-        mModule.log(Log.INFO, TAG, "Executing direct launch -> DEVICE");
+    private void performDirectDevice(Activity activity, ClassLoader classLoader, String explicitDeviceName) {
+        mModule.log(Log.INFO, TAG, "Executing direct launch -> DEVICE: explicit=" + explicitDeviceName);
 
-        String targetName = ModuleConfig.getSelectedDeviceName(activity);
-        ModuleConfig.SavedDevice device = ModuleConfig.getSelectedDevice(activity);
+        String targetName = (explicitDeviceName != null && !explicitDeviceName.trim().isEmpty())
+                ? explicitDeviceName.trim()
+                : ModuleConfig.getSelectedDeviceName(activity);
+
+        ModuleConfig.SavedDevice device = null;
+        if (explicitDeviceName != null && !explicitDeviceName.trim().isEmpty()) {
+            for (ModuleConfig.SavedDevice d : ModuleConfig.getSavedDevices(activity)) {
+                if (targetName.equals(d.name)) {
+                    device = d;
+                    break;
+                }
+            }
+        }
+        if (device == null) {
+            device = ModuleConfig.getSelectedDevice(activity);
+        }
 
         if (device == null) {
             boolean snapshotEmpty = ModuleConfig.getSavedDevices(activity).isEmpty();

@@ -133,9 +133,6 @@ public class SettingsDialog {
         tvSub.setLayoutParams(lpSub);
         root.addView(tvSub);
 
-        // 分割线
-        root.addView(createDivider(context));
-
         // 2. 开关群
         addSectionHeader(context, root, "基础与通用");
 
@@ -186,13 +183,12 @@ public class SettingsDialog {
                     ModuleConfig.isWaterHoldToSettleEnabled(context),
                     (buttonView, isChecked) -> ModuleConfig.setWaterHoldToSettleEnabled(context, isChecked));
 
-            // ---- 娱乐：长按按钮主题（点击后弹出带动态预览的选择器）----
-            addSectionHeader(context, root, "娱乐");
-
+            // 长按按钮主题（归入设备使用与结算，长按滑块快速结算的延伸外观）
             LinearLayout themeRow = new LinearLayout(context);
             themeRow.setOrientation(LinearLayout.HORIZONTAL);
             themeRow.setGravity(Gravity.CENTER_VERTICAL);
             themeRow.setPadding(0, dp12, 0, dp12);
+            themeRow.setMinimumHeight(dp2px(context, 48));
 
             LinearLayout themeTexts = new LinearLayout(context);
             themeTexts.setOrientation(LinearLayout.VERTICAL);
@@ -240,38 +236,27 @@ public class SettingsDialog {
             root.addView(themeRow);
         }
 
-        if (BuildConfig.DEBUG) {
-            View rowWebDebug = addSwitchItem(context, root, "网页调试模式", null,
-                    ModuleConfig.isWebviewDebugEnabled(context),
-                    (buttonView, isChecked) -> ModuleConfig.setWebviewDebugEnabled(context, isChecked));
+        // 3. 快捷与启动（先放轻量的长按图标快捷，再放启动直达单选组）
+        addSectionHeader(context, root, "快捷与启动");
 
-            View rowDebugHud = addSwitchItem(context, root, "饮水机调试条", "在饮水机页面左下角显示滚动日志",
-                    ModuleConfig.isDebugHudEnabled(context),
-                    (buttonView, isChecked) -> ModuleConfig.setDebugHudEnabled(context, isChecked));
-
-            boolean isUnlocked = ModuleConfig.isDevOptionsUnlocked(context);
-            rowWebDebug.setVisibility(isUnlocked ? View.VISIBLE : View.GONE);
-            rowDebugHud.setVisibility(isUnlocked ? View.VISIBLE : View.GONE);
-            if (!isUnlocked) {
-                final int[] titleClicks = {0};
-                View.OnClickListener unlockListener = v -> {
-                    titleClicks[0]++;
-                    if (titleClicks[0] >= 7) {
-                        ModuleConfig.setDevOptionsUnlocked(context, true);
-                        rowWebDebug.setVisibility(View.VISIBLE);
-                        rowDebugHud.setVisibility(View.VISIBLE);
-                        showToast(context, "已开启调试模式");
-                        tvTitle.setOnClickListener(null);
-                        tvSub.setOnClickListener(null);
-                    }
-                };
-                tvTitle.setOnClickListener(unlockListener);
-                tvSub.setOnClickListener(unlockListener);
-            }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
+            addShortcutSwitchItem(context, root);
         }
 
-        // 3. APP启动直达策略（单选组）
-        addSectionHeader(context, root, "APP启动直达策略");
+        TextView tvDirectTitle = new TextView(context);
+        tvDirectTitle.setText("启动应用直达");
+        tvDirectTitle.setTextSize(14);
+        tvDirectTitle.setTextColor(Color.parseColor("#262626"));
+        tvDirectTitle.getPaint().setFakeBoldText(true);
+        tvDirectTitle.setPadding(0, dp2px(context, 12), 0, dp2px(context, 2));
+        root.addView(tvDirectTitle);
+
+        TextView tvDirectDesc = new TextView(context);
+        tvDirectDesc.setText("点击图标打开应用时，自动进入自选功能");
+        tvDirectDesc.setTextSize(11);
+        tvDirectDesc.setTextColor(Color.parseColor("#8c8c8c"));
+        tvDirectDesc.setPadding(0, 0, 0, dp2px(context, 4));
+        root.addView(tvDirectDesc);
 
         RadioGroup radioGroup = new RadioGroup(context);
         radioGroup.setOrientation(LinearLayout.VERTICAL);
@@ -354,6 +339,10 @@ public class SettingsDialog {
                 btnDevicePicker.setText(chosen + "  ▾");
                 rbDevice.setChecked(true);
                 ModuleConfig.setDirectLaunchMode(context, ModuleConfig.DIRECT_LAUNCH_DISPENSER);
+                try {
+                    io.github.yilink1.xiaolianplus.shortcut.AppShortcutHelper.updateShortcuts(context);
+                } catch (Throwable ignored) {
+                }
             });
         });
 
@@ -366,7 +355,35 @@ public class SettingsDialog {
                 ModuleConfig.isVerboseLogEnabled(context),
                 (buttonView, isChecked) -> ModuleConfig.setVerboseLogEnabled(context, isChecked));
 
-        root.addView(createDivider(context));
+        if (BuildConfig.DEBUG) {
+            View rowWebDebug = addSwitchItem(context, root, "网页调试模式", "启用 WebView DevTools 远程调试",
+                    ModuleConfig.isWebviewDebugEnabled(context),
+                    (buttonView, isChecked) -> ModuleConfig.setWebviewDebugEnabled(context, isChecked));
+
+            View rowDebugHud = addSwitchItem(context, root, "饮水机调试条", "在饮水机页面左下角显示滚动日志",
+                    ModuleConfig.isDebugHudEnabled(context),
+                    (buttonView, isChecked) -> ModuleConfig.setDebugHudEnabled(context, isChecked));
+
+            boolean isUnlocked = ModuleConfig.isDevOptionsUnlocked(context);
+            rowWebDebug.setVisibility(isUnlocked ? View.VISIBLE : View.GONE);
+            rowDebugHud.setVisibility(isUnlocked ? View.VISIBLE : View.GONE);
+            if (!isUnlocked) {
+                final int[] titleClicks = {0};
+                View.OnClickListener unlockListener = v -> {
+                    titleClicks[0]++;
+                    if (titleClicks[0] >= 7) {
+                        ModuleConfig.setDevOptionsUnlocked(context, true);
+                        rowWebDebug.setVisibility(View.VISIBLE);
+                        rowDebugHud.setVisibility(View.VISIBLE);
+                        showToast(context, "已开启调试模式");
+                        tvTitle.setOnClickListener(null);
+                        tvSub.setOnClickListener(null);
+                    }
+                };
+                tvTitle.setOnClickListener(unlockListener);
+                tvSub.setOnClickListener(unlockListener);
+            }
+        }
 
         // 4. 底部确定按钮（Soft UI 浅色胶囊微按钮，上下微胖饱满，留足呼吸间距）
         LinearLayout bottomBar = new LinearLayout(context);
@@ -462,6 +479,7 @@ public class SettingsDialog {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(0, dp12, 0, dp12);
+        row.setMinimumHeight(dp2px(context, 48));
 
         LinearLayout textCol = new LinearLayout(context);
         textCol.setOrientation(LinearLayout.VERTICAL);
@@ -511,13 +529,109 @@ public class SettingsDialog {
         return row;
     }
 
+    private static View addShortcutSwitchItem(Context context, LinearLayout parent) {
+        int dp12 = dp2px(context, 12);
+        int dp8 = dp2px(context, 8);
+
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp12, 0, dp12);
+        row.setMinimumHeight(dp2px(context, 48));
+
+        LinearLayout textCol = new LinearLayout(context);
+        textCol.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams textColLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        textCol.setLayoutParams(textColLp);
+
+        TextView tvTitle = new TextView(context);
+        tvTitle.setText("长按图标快捷");
+        tvTitle.setTextSize(14);
+        tvTitle.setTextColor(Color.parseColor("#262626"));
+        tvTitle.getPaint().setFakeBoldText(true);
+        textCol.addView(tvTitle);
+
+        TextView tvDesc = new TextView(context);
+        tvDesc.setText("长按桌面图标弹出直达菜单，支持自定义编排");
+        tvDesc.setTextSize(11);
+        tvDesc.setTextColor(Color.parseColor("#8c8c8c"));
+        tvDesc.setPadding(0, dp2px(context, 2), 0, 0);
+        textCol.addView(tvDesc);
+
+        row.addView(textCol);
+
+        // 精巧的 ☰ 自选设备菜单按钮
+        TextView btnMenu = new TextView(context);
+        btnMenu.setText("☰");
+        btnMenu.setTextSize(15);
+        btnMenu.setTextColor(Color.parseColor("#1082FF"));
+        btnMenu.setGravity(Gravity.CENTER);
+        int pad = dp2px(context, 6);
+        btnMenu.setPadding(pad, dp2px(context, 2), pad, dp2px(context, 2));
+
+        GradientDrawable menuBg = new GradientDrawable();
+        menuBg.setColor(Color.parseColor("#EAF2FF"));
+        menuBg.setCornerRadius(dp2px(context, 6));
+        menuBg.setStroke(dp2px(context, 1), Color.parseColor("#CCE1FF"));
+        btnMenu.setBackground(menuBg);
+
+        LinearLayout.LayoutParams btnMenuLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        btnMenuLp.rightMargin = dp2px(context, 10);
+        btnMenu.setLayoutParams(btnMenuLp);
+
+        boolean enabled = ModuleConfig.isAppShortcutsEnabled(context);
+        btnMenu.setAlpha(enabled ? 1.0f : 0.4f);
+        btnMenu.setOnClickListener(v -> {
+            if (!ModuleConfig.isAppShortcutsEnabled(context)) {
+                showToast(context, "请先开启「长按图标快捷」");
+                return;
+            }
+            ShortcutEditorDialog.show(context);
+        });
+        row.addView(btnMenu);
+
+        Switch sw = new Switch(context);
+        sw.setChecked(enabled);
+        sw.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            ModuleConfig.setAppShortcutsEnabled(context, isChecked);
+            btnMenu.setAlpha(isChecked ? 1.0f : 0.4f);
+            try {
+                io.github.yilink1.xiaolianplus.shortcut.AppShortcutHelper.updateShortcuts(context);
+            } catch (Throwable ignored) {
+            }
+        });
+
+        int[][] states = new int[][] {
+            new int[] { android.R.attr.state_checked },
+            new int[] { -android.R.attr.state_checked }
+        };
+        int[] thumbColors = new int[] {
+            Color.parseColor("#1082FF"),
+            Color.parseColor("#FFFFFF")
+        };
+        int[] trackColors = new int[] {
+            Color.argb(100, 16, 130, 255),
+            Color.parseColor("#E0E0E0")
+        };
+        sw.setThumbTintList(new ColorStateList(states, thumbColors));
+        sw.setTrackTintList(new ColorStateList(states, trackColors));
+        row.addView(sw);
+
+        parent.addView(row);
+        return row;
+    }
+
     private static void addSectionHeader(Context context, LinearLayout parent, String title) {
+        if (!"基础与通用".equals(title)) {
+            parent.addView(createSubtleDivider(context));
+        }
         TextView tv = new TextView(context);
         tv.setText(title);
         tv.setTextSize(13);
         tv.setTextColor(Color.parseColor("#1082FF"));
         tv.getPaint().setFakeBoldText(true);
-        tv.setPadding(0, dp2px(context, 14), 0, dp2px(context, 4));
+        tv.setPadding(0, dp2px(context, "基础与通用".equals(title) ? 14 : 6), 0, dp2px(context, 4));
         parent.addView(tv);
     }
 
@@ -542,13 +656,13 @@ public class SettingsDialog {
         return rb;
     }
 
-    private static View createDivider(Context context) {
+    private static View createSubtleDivider(Context context) {
         View v = new View(context);
-        v.setBackgroundColor(Color.parseColor("#f0f0f0"));
+        v.setBackgroundColor(Color.parseColor("#F1F5F9"));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp2px(context, 1));
-        lp.topMargin = dp2px(context, 6);
-        lp.bottomMargin = dp2px(context, 6);
+        lp.topMargin = dp2px(context, 10);
+        lp.bottomMargin = dp2px(context, 4);
         v.setLayoutParams(lp);
         return v;
     }
