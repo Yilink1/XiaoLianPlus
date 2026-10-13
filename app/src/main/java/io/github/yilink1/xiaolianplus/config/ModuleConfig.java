@@ -161,6 +161,56 @@ public class ModuleConfig {
         getPrefs(context).edit().putInt(KEY_DIRECT_LAUNCH_MODE, mode).apply();
     }
 
+    public static final String KEY_APP_SHORTCUTS = "key_app_shortcuts";
+    public static final String KEY_SHORTCUT_CUSTOM_ITEMS = "key_shortcut_custom_items_v2";
+    public static final String SHORTCUT_ITEM_SCAN = "__action_scan__";
+
+    public static boolean isAppShortcutsEnabled(Context context) {
+        return getPrefs(context).getBoolean(KEY_APP_SHORTCUTS, true);
+    }
+
+    public static void setAppShortcutsEnabled(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(KEY_APP_SHORTCUTS, enabled).apply();
+    }
+
+    public static java.util.List<String> getShortcutCustomItems(Context context) {
+        String saved = getPrefs(context).getString(KEY_SHORTCUT_CUSTOM_ITEMS, null);
+        java.util.List<String> list = new java.util.ArrayList<>();
+        if (saved != null && !saved.trim().isEmpty()) {
+            for (String item : saved.split("\n")) {
+                String t = item.trim();
+                if (!t.isEmpty() && !list.contains(t)) {
+                    list.add(t);
+                }
+            }
+        }
+        if (list.isEmpty()) {
+            // 默认初始状态：设备置顶，扫一扫沉底（最多 4 个）
+            String defaultDevice = getSelectedDeviceName(context);
+            if (defaultDevice != null && !defaultDevice.trim().isEmpty()) {
+                list.add(defaultDevice.trim());
+            } else {
+                list.add("联网饮水机");
+            }
+            list.add(SHORTCUT_ITEM_SCAN);
+        }
+        return list;
+    }
+
+    public static void setShortcutCustomItems(Context context, java.util.List<String> items) {
+        if (items == null || items.isEmpty()) {
+            getPrefs(context).edit().remove(KEY_SHORTCUT_CUSTOM_ITEMS).apply();
+            return;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String item : items) {
+            if (item != null && !item.trim().isEmpty()) {
+                sb.append(item.trim()).append("\n");
+            }
+        }
+        getPrefs(context).edit().putString(KEY_SHORTCUT_CUSTOM_ITEMS, sb.toString().trim()).apply();
+    }
+
     public static final String KEY_VERBOSE_LOG = "key_verbose_log";
 
     public static boolean isVerboseLogEnabled(Context context) {

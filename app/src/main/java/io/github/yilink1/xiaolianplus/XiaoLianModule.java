@@ -176,6 +176,11 @@ public class XiaoLianModule extends XposedModule {
                         if (className.contains("SplashActivity")) {
                             SplashStartHooker.reset();
                             SplashStartHooker.sCurrentSplashActivity = new WeakReference<>(activity);
+                            if (io.github.yilink1.xiaolianplus.shortcut.AppShortcutHelper.captureShortcutIntent(activity.getIntent())) {
+                                if (io.github.yilink1.xiaolianplus.shortcut.AppShortcutHelper.forwardToHomeIfAlive(activity)) {
+                                    return chain.proceed();
+                                }
+                            }
 
                             if (!mHooked) {
                                 appLog(Log.INFO, TAG, "Detected SplashActivity instance launched: " + className);
