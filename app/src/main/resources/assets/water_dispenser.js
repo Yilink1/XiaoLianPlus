@@ -43,15 +43,6 @@
               xlLog('bridge> ' + (m ? (m[1] || (m[2] + ':' + m[3])) : str.slice(0, 40)));
             }
             captureRecordFromMessage(str, param);
-            if (str.includes('"toSelectBuilding"')) {
-              // 补发后 1.2 秒内，渲染层迟到的原始消息丢弃，避免重复打开选楼页
-              if (!window.__xl_replaying && Date.now() - (window.__xl_replay_time || 0) < 1200) {
-                xlLog('drop late toSelectBuilding');
-                return;
-              }
-              window.__xl_sb_time = Date.now();
-              try { window.__xl_sb_param = JSON.parse(JSON.stringify(param)); } catch (e) {}
-            }
             if (str.includes('"selectDevice"')) {
               const timeDiff = Date.now() - (window.__xl_last_star_tap_time || 0);
               if (timeDiff < 800) {
@@ -834,51 +825,6 @@
     cover.style.fontFamily = cs.fontFamily;
     cover.style.display = 'flex';
   }
-
-  // ───────── 9.6 楼栋名点击兜底 ─────────
-  // 实测现象：点「✕ 全部水机」后约 1 秒内点楼栋名，页面能收到 touchstart/touchend/click，
-  // 但渲染层不再向逻辑层发 toSelectBuilding（正常点击是 click 后 1ms 内就发）。
-  // 根因在小程序渲染层，脚本侧无法直接修；这里检测「点击落在楼栋名上、200ms 内却没有 toSelectBuilding 发出」，
-  // 用最近一次真实消息（没有则按 jumpToDrinkWater 同款格式构造）补发一次。
-
-  function replayToSelectBuilding() {
-    if (!window.AlipayJSBridge) return;
-    let param = null;
-    try { param = window.__xl_sb_param ? JSON.parse(JSON.stringify(window.__xl_sb_param)) : null; } catch (e) {}
-    if (!param) {
-      param = {
-        type: 'messagePort',
-        msgPortId: 2,
-        data: JSON.stringify({
-          data: {
-            c: 'page',
-            m: 'onRenderEvent',
-            a: ['toSelectBuilding', { type: 'tap', target: { dataset: {} }, currentTarget: { dataset: {} } }]
-          }
-        })
-      };
-    }
-    window.__xl_replay_time = Date.now();
-    window.__xl_replaying = true;
-    try { window.AlipayJSBridge.call('postMessage', param); } finally { window.__xl_replaying = false; }
-    xlLog('replay toSelectBuilding');
-  }
-
-  document.addEventListener('click', (e) => {
-    if (isFavMode) return; // 全收藏模式下标题是不可点击的覆盖层
-    const b = getBuildingEl();
-    if (!b) return;
-    const r = b.getBoundingClientRect();
-    const pad = 12;
-    const inside = (e.target && e.target.closest && e.target.closest('.building'))
-      || (e.clientX >= r.left - pad && e.clientX <= r.right + pad && e.clientY >= r.top - pad && e.clientY <= r.bottom + pad);
-    if (!inside) return;
-    const clickedAt = Date.now();
-    setTimeout(() => {
-      if ((window.__xl_sb_time || 0) >= clickedAt) return; // 渲染层已正常发出
-      replayToSelectBuilding();
-    }, 200);
-  }, true);
 
   // ───────── 10. 顶部【★ 全部收藏】胶囊按钮 ─────────
   function updateTopFavButton() {
