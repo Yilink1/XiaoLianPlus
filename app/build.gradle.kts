@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.yilink1.xiaolianplus"
         minSdk = 24
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
     }
 
     buildTypes {
